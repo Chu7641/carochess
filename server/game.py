@@ -8,7 +8,7 @@ from dataclasses import dataclass
 
 from caro_game import EMPTY, LEVELS, O, WIN_LENGTH, X, SearchResult, winning_line
 
-MIN_SIZE, MAX_SIZE = 9, 25
+MIN_SIZE, MAX_SIZE = 9, 50
 MODES = ("pvp", "bot")
 CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"  # bỏ I, O, 0, 1 cho dễ đọc
 

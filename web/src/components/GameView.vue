@@ -141,8 +141,7 @@ const stats = computed(() => {
   gap: 16px;
   align-items: start;
 }
-.board-wrap { display: flex; justify-content: center; }
-.board-wrap :deep(svg) { max-width: min(100%, calc(100vh - 110px)); }
+.board-wrap { min-width: 0; }
 .side { display: grid; gap: 14px; position: sticky; top: 16px; }
 .status { font-size: 1.15rem; font-weight: 700; text-align: center; padding: 6px 0; }
 .status.green { color: var(--green); }
@@ -180,6 +179,5 @@ const stats = computed(() => {
 @media (max-width: 860px) {
   .game { grid-template-columns: 1fr; }
   .side { position: static; }
-  .board-wrap :deep(svg) { max-width: 100%; }
 }
 </style>

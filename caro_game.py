@@ -260,6 +260,8 @@ class Position:
                 self.hash ^= self.zobrist[i][self.cells[i]]
                 for j in self.near[i]:
                     self.neighbors[j] += 1
+        # Ô trống có quân trong bán kính 2; cập nhật dần để không phải quét cả bàn.
+        self.frontier = {i for i, v in enumerate(self.cells) if v == EMPTY and self.neighbors[i]}
         self.lines = []
         for dr, dc in DIRS:
             for r in range(self.rows):
@@ -367,8 +369,7 @@ class Position:
             return []
         if self.empty_count == self.size:
             return [(self.rows // 2) * self.cols + self.cols // 2]
-        result = [i for i, v in enumerate(self.cells) if v == EMPTY and self.neighbors[i]]
-        return result or [i for i, v in enumerate(self.cells) if v == EMPTY]
+        return sorted(self.frontier) or [i for i, v in enumerate(self.cells) if v == EMPTY]
 
     def wins(self, i, player):
         """Thắng nếu đánh vào ô trống i; không sửa bàn cờ."""
@@ -394,8 +395,11 @@ class Position:
         self.cells[i] = player
         self.hash ^= self.zobrist[i][player]
         self.empty_count -= 1
+        self.frontier.discard(i)
         for j in self.near[i]:
             self.neighbors[j] += 1
+            if self.cells[j] == EMPTY:
+                self.frontier.add(j)
         for lid, weight in self.cell_lines[i]:
             code = self.codes[lid] + player * weight
             self.codes[lid] = code
@@ -409,9 +413,13 @@ class Position:
             self._replace_line(lid, previous, wins)
         for j in self.near[i]:
             self.neighbors[j] -= 1
+            if not self.neighbors[j]:
+                self.frontier.discard(j)
         self.empty_count += 1
         self.hash ^= self.zobrist[i][player]
         self.cells[i] = EMPTY
+        if self.neighbors[i]:
+            self.frontier.add(i)
 
     def evaluate(self, player):
         score = self.total[player] - self.total[3 - player]
@@ -1666,8 +1674,11 @@ def self_test():
                 self.assertEqual(pos.hash, rebuilt.hash)
                 self.assertEqual(pos.win_points, rebuilt.win_points)
                 self.assertEqual(pos.win_counts, rebuilt.win_counts)
+                self.assertEqual(pos.frontier, rebuilt.frontier)
             for token in reversed(tokens):
                 pos.undo(token)
+                rebuilt = Position([pos.cells[r * 13:(r + 1) * 13] for r in range(9)])
+                self.assertEqual(pos.frontier, rebuilt.frontier)
             self.assertEqual((pos.cells, pos.neighbors, pos.hash, pos.total,
                               pos.empty_count, pos.line_scores), initial)
 

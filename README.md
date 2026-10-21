@@ -8,7 +8,9 @@ Project có kèm bản desktop (pygame) dùng chung engine.
   Bạn chọn cầm X (đi trước) hoặc O (máy đi trước). Hoàn tác được.
 - **Đấu người qua LAN:** tạo phòng có mã 4 ký tự và link mời, xem danh sách phòng đang chờ.
   Người thứ ba vào phòng sẽ là người xem. Mỗi ván mới hai bên đổi quân.
-- **Luật:** bàn từ 9×9 đến 25×25, 5 quân liên tiếp là thắng. Có thể bật luật chặn hai đầu
+- **Bàn cờ:** bản web từ 9×9 đến 50×50 (bàn lớn thì cuộn được, có phóng to/thu nhỏ và
+  tự đưa nước mới vào tầm nhìn); bản desktop từ 9×9 đến 25×25.
+- **Luật:** 5 quân liên tiếp là thắng. Có thể bật luật chặn hai đầu
   (dãy bị chặn cả hai đầu thì không thắng). Đây không phải luật Renju.
 - Tải lại trang hoặc mất mạng giữa ván thì tự kết nối lại và giữ đúng ghế cũ.
   Giao diện dùng được trên điện thoại, có chế độ tối.
@@ -21,7 +23,7 @@ Project có kèm bản desktop (pygame) dùng chung engine.
 ## Cài đặt
 
 ```bash
-git clone <địa-chỉ-repo> carochess
+git clone https://github.com/Chu7641/carochess.git
 cd carochess
 
 python -m venv .venv
