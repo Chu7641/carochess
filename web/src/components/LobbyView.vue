@@ -2,7 +2,7 @@
 import { onMounted, onUnmounted, reactive, ref } from 'vue'
 import { createRoom, joinRoom, setName, state, X, O } from '../game.js'
 
-const info = ref({ levels: [], minSize: 9, maxSize: 25 })
+const info = ref({ levels: [] })
 const openRooms = ref([])
 const joinCode = ref('')
 const bot = reactive({ level: 1, side: X, size: 15, strict: false })
@@ -24,11 +24,8 @@ onMounted(async () => {
 })
 onUnmounted(() => clearInterval(timer))
 
-const sizes = () => {
-  const list = []
-  for (let n = info.value.minSize; n <= info.value.maxSize; n++) list.push(n)
-  return list
-}
+// Các kích thước bàn cho chọn; máy chủ vẫn chấp nhận mọi cỡ từ 9 đến 50.
+const SIZES = [9, 15, 30, 50]
 
 function startBot() {
   createRoom({ mode: 'bot', level: bot.level, side: bot.side, rows: bot.size, cols: bot.size,
@@ -70,7 +67,7 @@ function startPvp() {
       <label class="field">
         <span>Kích thước bàn</span>
         <select v-model.number="bot.size" class="input">
-          <option v-for="n in sizes()" :key="n" :value="n">{{ n }} × {{ n }}</option>
+          <option v-for="n in SIZES" :key="n" :value="n">{{ n }} × {{ n }}</option>
         </select>
       </label>
       <label class="check">
@@ -87,7 +84,7 @@ function startPvp() {
       <label class="field">
         <span>Kích thước bàn</span>
         <select v-model.number="pvp.size" class="input">
-          <option v-for="n in sizes()" :key="n" :value="n">{{ n }} × {{ n }}</option>
+          <option v-for="n in SIZES" :key="n" :value="n">{{ n }} × {{ n }}</option>
         </select>
       </label>
       <label class="check">
