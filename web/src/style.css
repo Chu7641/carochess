@@ -1,0 +1,93 @@
+:root {
+  --bg: #f4edde;
+  --panel: #fffcf5;
+  --panel-border: #d9cfbb;
+  --text: #2b2a27;
+  --muted: #6b675f;
+  --title: #342f28;
+  --board: #deb887;
+  --board-line: #5f432c;
+  --stone-x: #202225;
+  --stone-o: #bf2a30;
+  --green: #387e57;
+  --red: #b8483e;
+  --blue: #436391;
+  --grey: #666c74;
+  --accent: #eeb63d;
+  --radius: 12px;
+  color-scheme: light;
+  font-family: "Segoe UI", system-ui, -apple-system, Roboto, Arial, sans-serif;
+  color: var(--text);
+  background: var(--bg);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #1d1b18;
+    --panel: #2a2723;
+    --panel-border: #433d35;
+    --text: #ece6da;
+    --muted: #a59d90;
+    --title: #120f0c;
+    color-scheme: dark;
+  }
+}
+
+* { box-sizing: border-box; }
+body { margin: 0; min-height: 100vh; background: var(--bg); }
+button, input, select { font: inherit; }
+
+.btn {
+  border: 0;
+  border-radius: 8px;
+  padding: 9px 14px;
+  color: #fff;
+  background: var(--grey);
+  cursor: pointer;
+  font-weight: 600;
+  transition: filter 0.15s, transform 0.05s;
+}
+.btn:hover:not(:disabled) { filter: brightness(1.12); }
+.btn:active:not(:disabled) { transform: translateY(1px); }
+.btn:disabled { opacity: 0.45; cursor: not-allowed; }
+.btn.green { background: var(--green); }
+.btn.red { background: var(--red); }
+.btn.blue { background: var(--blue); }
+.btn.block { width: 100%; }
+
+.card {
+  background: var(--panel);
+  border: 1px solid var(--panel-border);
+  border-radius: var(--radius);
+  padding: 18px;
+}
+.card h2 { margin: 0 0 12px; font-size: 1.1rem; }
+
+.field { display: grid; gap: 6px; margin-bottom: 12px; }
+.field > span { font-size: 0.85rem; color: var(--muted); }
+.input {
+  width: 100%;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--panel-border);
+  background: var(--bg);
+  color: var(--text);
+}
+.row { display: flex; gap: 8px; align-items: center; }
+.row > * { flex: 1; }
+.muted { color: var(--muted); }
+.small { font-size: 0.85rem; }
+
+.segmented { display: flex; gap: 4px; }
+.segmented button {
+  flex: 1;
+  padding: 7px 4px;
+  border-radius: 8px;
+  border: 1px solid var(--panel-border);
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+}
+.segmented button.active { background: var(--green); border-color: var(--green); color: #fff; }
+
+.check { display: flex; gap: 8px; align-items: center; margin-bottom: 14px; cursor: pointer; }
