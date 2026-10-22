@@ -6,8 +6,9 @@ import GamesView from './components/GamesView.vue'
 import LobbyView from './components/LobbyView.vue'
 import GameView from './components/GameView.vue'
 import AdminView from './components/AdminView.vue'
+import PasswordView from './components/PasswordView.vue'
 
-const TITLES = { caro: 'CỜ CARO · GOMOKU', admin: 'QUẢN TRỊ' }
+const TITLES = { caro: 'CỜ CARO · GOMOKU', admin: 'QUẢN TRỊ', password: 'TÀI KHOẢN' }
 
 // Link mời dạng /?room=ABCD: vào thẳng phòng đó ngay khi đăng nhập xong.
 const invite = new URLSearchParams(location.search).get('room')
@@ -33,7 +34,8 @@ onMounted(checkSession)
               @click="chooseGame('admin')">Quản trị</button>
       <span class="conn" :class="{ off: !state.connected }"
             :title="state.connected ? 'Đã kết nối' : 'Đang kết nối lại…'"></span>
-      <span>{{ state.user.username }}</span>
+      <button class="name" :disabled="!!state.code" title="Đổi mật khẩu"
+              @click="chooseGame('password')">{{ state.user.username }}</button>
       <span class="elo" title="Điểm elo">{{ state.user.elo }} elo</span>
       <span v-if="state.user.isAdmin" class="badge">Admin</span>
       <button class="btn small" @click="logout">Đăng xuất</button>
@@ -48,6 +50,7 @@ onMounted(checkSession)
       <LobbyView v-else />
     </template>
     <AdminView v-else-if="state.game === 'admin' && state.user.isAdmin" />
+    <PasswordView v-else-if="state.game === 'password'" />
     <GamesView v-else />
   </main>
   <Transition name="toast">
@@ -74,6 +77,11 @@ h1 { margin: 0; font-size: 1.2rem; letter-spacing: 0.04em; display: flex; align-
 .who .btn { padding: 6px 10px; }
 .conn { width: 9px; height: 9px; border-radius: 50%; background: #2fae62; flex: none; }
 .conn.off { background: #e0786c; }
+.name {
+  border: 0; background: none; color: inherit; font: inherit; cursor: pointer;
+  padding: 0; text-decoration: underline dotted; text-underline-offset: 3px;
+}
+.name:disabled { cursor: default; text-decoration: none; }
 .elo { color: #e8d9b8; font-size: 0.8rem; white-space: nowrap; }
 .badge { background: var(--accent); color: #2b2a27; border-radius: 6px; padding: 1px 6px; font-size: 0.75rem; font-weight: 700; }
 main { padding: 16px; max-width: 1280px; margin: 0 auto; }
@@ -94,6 +102,6 @@ main { padding: 16px; max-width: 1280px; margin: 0 auto; }
 .toast-enter-from, .toast-leave-to { opacity: 0; transform: translate(-50%, 10px); }
 @media (max-width: 560px) {
   h1 { font-size: 1rem; }
-  .who > span:not(.conn):not(.badge) { max-width: 90px; overflow: hidden; text-overflow: ellipsis; }
+  .who > .name { max-width: 90px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 }
 </style>

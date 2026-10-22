@@ -279,6 +279,20 @@ def me(user=Depends(current_user)):
     return user
 
 
+class PasswordChange(BaseModel):
+    current: str
+    new: str
+
+
+@app.post("/api/password")
+def change_password(body: PasswordChange, request: Request, user=Depends(current_user)):
+    try:
+        auth.change_password(user["id"], body.current, body.new, request.cookies.get(COOKIE))
+    except auth.AuthError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    return {}
+
+
 def current_admin(user=Depends(current_user)):
     if not user["isAdmin"]:
         raise HTTPException(403, "Chỉ admin mới dùng được chức năng này.")

@@ -257,6 +257,22 @@ def test_register_login_logout(client):
     assert client.get("/api/me").status_code == 401
 
 
+def test_change_own_password(client):
+    phone = account(client, "binh")
+    laptop = login(client, "binh", "matkhau1")
+    change = lambda current, new: client.post(
+        "/api/password", json={"current": current, "new": new}, headers=laptop)
+    assert change("sai-mat-khau", "moi12345").json()["detail"] == "Mật khẩu hiện tại không đúng."
+    assert change("matkhau1", "123").status_code == 400  # quá ngắn
+    assert client.post("/api/password", json={"current": "matkhau1", "new": "moi12345"}).status_code == 401
+
+    assert change("matkhau1", "moi12345").status_code == 200
+    assert client.get("/api/me", headers=laptop).status_code == 200  # phiên đang dùng vẫn giữ
+    assert client.get("/api/me", headers=phone).status_code == 401   # máy khác bị đăng xuất
+    assert client.post("/api/login", json={"username": "binh", "password": "matkhau1"}).status_code == 400
+    login(client, "binh", "moi12345")
+
+
 def test_registration_needs_approval_and_admin_tools(client):
     for name in ("cho_duyet", "bi_tu_choi"):
         assert client.post("/api/register", json={"username": name, "password": "matkhau1"}).json() == {"pending": True}

@@ -99,14 +99,30 @@ def init():
                        (username, _hash(password), time.time()))
 
 
+def _check_password(password):
+    if not 6 <= len(password) <= 128:
+        raise AuthError("Mật khẩu phải từ 6 đến 128 ký tự.")
+
+
+def change_password(user_id, current, new, keep_token):
+    """Người dùng tự đổi mật khẩu; đăng xuất mọi phiên khác, giữ phiên đang dùng."""
+    new = str(new or "")
+    _check_password(new)
+    with closing(_db()) as db, db:
+        row = db.execute("SELECT password FROM users WHERE id = ?", (user_id,)).fetchone()
+        if row is None or not _verify(str(current or ""), row["password"]):
+            raise AuthError("Mật khẩu hiện tại không đúng.")
+        db.execute("UPDATE users SET password = ? WHERE id = ?", (_hash(new), user_id))
+        db.execute("DELETE FROM sessions WHERE user_id = ? AND token != ?", (user_id, keep_token))
+
+
 def register(username, password):
     """Tạo tài khoản chờ duyệt; chỉ đăng nhập được sau khi admin phê duyệt."""
     username = str(username or "").strip()
     password = str(password or "")
     if not USERNAME_RE.fullmatch(username):
         raise AuthError("Tên đăng nhập gồm 3–20 ký tự: chữ không dấu, số hoặc dấu _.")
-    if not 6 <= len(password) <= 128:
-        raise AuthError("Mật khẩu phải từ 6 đến 128 ký tự.")
+    _check_password(password)
     try:
         with closing(_db()) as db, db:
             db.execute("INSERT INTO users (username, password, created, approved) VALUES (?, ?, ?, 0)",

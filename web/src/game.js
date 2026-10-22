@@ -59,6 +59,8 @@ export async function login(username, password) {
   connect()
 }
 
+export const changePassword = (current, next) => api('/api/password', { current, new: next })
+
 // Tài khoản mới chờ admin duyệt, chưa đăng nhập được ngay.
 export const register = (username, password) => api('/api/register', { username, password })
 

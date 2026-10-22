@@ -5,7 +5,8 @@ Cờ caro chơi trên trình duyệt trong mạng LAN, có hai chế độ: **ng
 Project có kèm bản desktop (pygame) dùng chung engine.
 
 - **Tài khoản:** đăng ký/đăng nhập, lưu trong SQLite (`data/caro.db`). Tài khoản mới phải
-  được admin phê duyệt mới đăng nhập được. Đăng nhập xong thì chọn trò chơi (hiện có cờ caro).
+  được admin phê duyệt mới đăng nhập được. Bấm vào tên mình trên thanh tiêu đề để đổi mật khẩu.
+  Đăng nhập xong thì chọn trò chơi (hiện có cờ caro).
 - **Quản trị:** tài khoản admin khai báo trong `.env`. Trang Quản trị: duyệt/từ chối đăng ký,
   xem người dùng, nâng lên admin, đặt lại mật khẩu (sinh ngẫu nhiên), reset elo, xóa tài khoản.
 - **Đấu máy:** 3 mức độ khó (Nhanh 2 giây, Mạnh 5 giây, Chuyên gia 12 giây mỗi nước).
@@ -154,6 +155,6 @@ máy đi trước.
 - Phòng nằm trong bộ nhớ: khởi động lại máy chủ thì mất các ván đang chơi. Phòng không còn ai
   kết nối sẽ bị xóa sau 10 phút.
 - Chưa có chat, bảng xếp hạng hay lịch sử ván đấu.
-- Người dùng chưa tự đổi được mật khẩu; quên mật khẩu thì nhờ admin đặt lại.
+- Quên mật khẩu thì nhờ admin đặt lại (chưa có khôi phục qua email).
 - Đăng nhập chưa giới hạn số lần thử sai, và chạy HTTP thường (không HTTPS). Chỉ nên
   chạy trong mạng LAN tin cậy, không đưa thẳng ra Internet.
