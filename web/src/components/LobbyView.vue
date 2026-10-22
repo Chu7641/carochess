@@ -1,9 +1,13 @@
 <script setup>
 import { onMounted, onUnmounted, reactive, ref } from 'vue'
-import { createRoom, joinRoom, setName, state, X, O } from '../game.js'
+import { createRoom, joinRoom, state, X, O } from '../game.js'
 
 const info = ref({ levels: [] })
-const openRooms = ref([])
+const rooms = ref([])
+const STATUS = { waiting: 'Đang chờ', playing: 'Đang chơi', bot: 'Đấu máy' }
+// Phòng còn giữ ghế của mình: vào lại. Phòng đang chờ: vào chơi. Còn lại: vào xem.
+const mine = (room) => room.players.includes(state.user.username)
+const hint = (room) => mine(room) ? 'Vào lại →' : room.status === 'waiting' ? 'Vào ngay →' : 'Xem →'
 const joinCode = ref('')
 const bot = reactive({ level: 1, side: X, size: 15, strict: false })
 const pvp = reactive({ size: 15, strict: false })
@@ -11,7 +15,8 @@ let timer = null
 
 async function refreshRooms() {
   try {
-    openRooms.value = await (await fetch('/api/rooms')).json()
+    const res = await fetch('/api/rooms')
+    if (res.ok) rooms.value = await res.json()
   } catch { /* máy chủ đang khởi động lại */ }
 }
 
@@ -38,14 +43,6 @@ function startPvp() {
 
 <template>
   <section class="lobby">
-    <div class="card name-card">
-      <label class="field">
-        <span>Tên của bạn</span>
-        <input class="input" maxlength="20" placeholder="Người chơi"
-               :value="state.name" @input="setName($event.target.value)" />
-      </label>
-    </div>
-
     <div class="card">
       <h2>🤖 Chơi với máy</h2>
       <div class="field">
@@ -102,20 +99,28 @@ function startPvp() {
           <button class="btn green" :disabled="!state.connected || !joinCode.trim()">Vào phòng</button>
         </form>
       </div>
+    </div>
 
-      <h3 class="small muted">Phòng đang chờ người chơi</h3>
-      <p v-if="!openRooms.length" class="small muted">Chưa có phòng nào. Hãy tạo phòng và gửi mã cho bạn bè.</p>
-      <ul class="rooms">
-        <li v-for="room in openRooms" :key="room.code">
-          <div>
-            <strong>{{ room.code }}</strong> · {{ room.host }}
-            <div class="small muted">
-              {{ room.rows }}×{{ room.cols }} · {{ room.strict ? 'chặn hai đầu' : 'luật tự do' }}
-            </div>
+    <div class="card rooms-card">
+      <h2>Các phòng <span class="small muted">· tự cập nhật</span></h2>
+      <p v-if="!rooms.length" class="small muted">Chưa có phòng nào. Hãy tạo phòng và gửi mã cho bạn bè.</p>
+      <div class="rooms">
+        <button v-for="room in rooms" :key="room.code" class="room" :class="room.status"
+                @click="joinRoom(room.code)">
+          <div class="room-head">
+            <strong>{{ room.code }}</strong>
+            <span class="status">{{ STATUS[room.status] }}</span>
           </div>
-          <button class="btn green" @click="joinRoom(room.code)">Vào</button>
-        </li>
-      </ul>
+          <div class="players">
+            {{ room.players.join(' vs ') }}<template v-if="room.status === 'waiting'"> · chờ đối thủ</template>
+          </div>
+          <div class="small muted">
+            {{ room.rows }}×{{ room.cols }} · {{ room.strict ? 'chặn hai đầu' : 'luật tự do' }}
+            · {{ room.moves }} nước
+          </div>
+          <span class="join-hint">{{ hint(room) }}</span>
+        </button>
+      </div>
     </div>
   </section>
 </template>
@@ -128,22 +133,35 @@ function startPvp() {
   max-width: 920px;
   margin: 0 auto;
 }
-.name-card { grid-column: 1 / -1; }
-.name-card .field { margin: 0; max-width: 360px; }
 .segmented small { opacity: 0.75; }
 .join { margin-top: 18px; }
 .code { text-transform: uppercase; letter-spacing: 0.2em; font-weight: 700; }
-.rooms { list-style: none; padding: 0; margin: 0; display: grid; gap: 8px; }
-.rooms li {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 8px;
-  padding: 10px 12px;
+.rooms-card { grid-column: 1 / -1; }
+.rooms { display: grid; gap: 10px; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); }
+.room {
+  display: grid;
+  gap: 4px;
+  padding: 12px;
   border: 1px solid var(--panel-border);
+  border-left: 4px solid var(--grey);
   border-radius: 10px;
+  background: var(--panel);
+  color: var(--text);
+  text-align: left;
 }
-h3 { margin: 18px 0 8px; font-weight: 600; }
+.room { cursor: pointer; transition: transform 0.1s; }
+.room:hover { transform: translateY(-2px); border-color: var(--green); }
+.room.waiting { border-left-color: var(--green); }
+.room.playing { border-left-color: var(--red); }
+.room.bot { border-left-color: var(--blue); }
+.room-head { display: flex; justify-content: space-between; align-items: center; }
+.status { font-size: 0.75rem; font-weight: 700; padding: 2px 8px; border-radius: 999px; color: #fff; background: var(--grey); }
+.waiting .status { background: var(--green); }
+.playing .status { background: var(--red); }
+.bot .status { background: var(--blue); }
+.players { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.join-hint { color: var(--green); font-weight: 700; font-size: 0.85rem; }
+.playing .join-hint, .bot .join-hint { color: var(--muted); }
 @media (max-width: 720px) {
   .lobby { grid-template-columns: 1fr; }
 }

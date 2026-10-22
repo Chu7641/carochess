@@ -4,15 +4,24 @@ Cờ caro chơi trên trình duyệt trong mạng LAN, có hai chế độ: **ng
 **người đấu máy**. Bot viết bằng Python thuần, không dùng thư viện AI hay dịch vụ mạng.
 Project có kèm bản desktop (pygame) dùng chung engine.
 
+- **Tài khoản:** đăng ký/đăng nhập, lưu trong SQLite (`data/caro.db`). Tài khoản mới phải
+  được admin phê duyệt mới đăng nhập được. Đăng nhập xong thì chọn trò chơi (hiện có cờ caro).
+- **Quản trị:** tài khoản admin khai báo trong `.env`. Trang Quản trị: duyệt/từ chối đăng ký,
+  xem người dùng, nâng lên admin, đặt lại mật khẩu (sinh ngẫu nhiên), reset elo, xóa tài khoản.
 - **Đấu máy:** 3 mức độ khó (Nhanh 2 giây, Mạnh 5 giây, Chuyên gia 12 giây mỗi nước).
-  Bạn chọn cầm X (đi trước) hoặc O (máy đi trước). Hoàn tác được.
-- **Đấu người qua LAN:** tạo phòng có mã 4 ký tự và link mời, xem danh sách phòng đang chờ.
-  Người thứ ba vào phòng sẽ là người xem. Mỗi ván mới hai bên đổi quân.
+  Bạn chọn cầm X (đi trước) hoặc O (máy đi trước). Hoàn tác được. Không tính elo.
+- **Đấu người qua LAN:** tạo phòng có mã 4 ký tự và link mời. Sảnh hiện mọi phòng
+  (đang chờ, đang chơi, đấu máy): bấm để vào chơi, vào lại ghế của mình, hoặc vào xem.
+  - Đủ hai người thì cả hai bấm **Sẵn sàng** ván mới bắt đầu. Mỗi ván mới hai bên đổi quân.
+  - Mỗi lượt có **30 giây**. Hết giờ, rời phòng hoặc bấm "Ván mới" khi ván chưa xong thì
+    bị tính thua.
+  - **Xin đi lại** cần đối thủ đồng ý.
+  - **Elo:** bắt đầu 1000, tính theo Elo chuẩn K = 32 (hai người ngang điểm: thắng +16, thua −16).
 - **Bàn cờ:** bản web từ 9×9 đến 50×50 (bàn lớn thì cuộn được, có phóng to/thu nhỏ và
   tự đưa nước mới vào tầm nhìn); bản desktop từ 9×9 đến 25×25.
 - **Luật:** 5 quân liên tiếp là thắng. Có thể bật luật chặn hai đầu
   (dãy bị chặn cả hai đầu thì không thắng). Đây không phải luật Renju.
-- Tải lại trang hoặc mất mạng giữa ván thì tự kết nối lại và giữ đúng ghế cũ.
+- Tải lại trang, mất mạng hay đổi máy giữa ván thì đăng nhập lại là về đúng ghế cũ.
   Giao diện dùng được trên điện thoại, có chế độ tối.
 
 ## Yêu cầu
@@ -36,7 +45,14 @@ cd web
 npm install
 npm run build
 cd ..
+
+# Khai báo tài khoản admin, rồi sửa ADMIN_PASSWORD trong .env
+copy .env.example .env      # macOS / Linux: cp .env.example .env
 ```
+
+Tài khoản admin được tạo ở lần chạy máy chủ đầu tiên; đăng nhập bằng `ADMIN_USERNAME` và
+`ADMIN_PASSWORD` trong `.env`. Sửa `ADMIN_PASSWORD` sau lần chạy đầu không đổi mật khẩu của
+tài khoản đã tạo. `.env` và thư mục `data/` không được đưa lên git.
 
 Các lệnh bên dưới viết theo Windows. Trên macOS/Linux, thay `.venv\Scripts\python.exe`
 bằng `.venv/bin/python`.
@@ -100,13 +116,15 @@ Vite chuyển tiếp `/api` và `/ws` sang cổng 8000. Sửa giao diện xong, 
 ```
 caro_game.py          Engine (luật, bot) + game desktop pygame
 server/
-  app.py              FastAPI: WebSocket /ws, /api/info, /api/rooms, phục vụ web/dist
+  app.py              FastAPI: đăng nhập, WebSocket /ws, /api/rooms, phục vụ web/dist
+  auth.py             Tài khoản + phiên đăng nhập (SQLite, mật khẩu băm scrypt), đọc .env
   game.py             Phòng chơi: ghế, luật, hoàn tác, đổi bên
   bot.py              Chạy bot ở luồng nền cho mỗi phòng, có nghĩ trước
   tests/              Kiểm thử máy chủ (pytest)
 web/
-  src/game.js         Kết nối WebSocket, trạng thái, tự kết nối lại
-  src/components/     LobbyView (sảnh), GameView (ván cờ), CaroBoard (bàn cờ SVG)
+  src/game.js         Tài khoản, kết nối WebSocket, trạng thái, tự kết nối lại
+  src/components/     LoginView, GamesView (chọn trò), LobbyView (sảnh), GameView (ván cờ),
+                      CaroBoard (bàn cờ SVG), AdminView (quản trị)
 .claude/skills/       Hướng dẫn cho Claude Code khi làm việc với project
 ```
 
@@ -135,5 +153,7 @@ máy đi trước.
   CPU và mỗi bot tính nông hơn.
 - Phòng nằm trong bộ nhớ: khởi động lại máy chủ thì mất các ván đang chơi. Phòng không còn ai
   kết nối sẽ bị xóa sau 10 phút.
-- Chế độ đấu người chưa có hoàn tác, chat hay đồng hồ.
-- Không có đăng nhập; chỉ nên chạy trong mạng LAN tin cậy, không đưa thẳng ra Internet.
+- Chưa có chat, bảng xếp hạng hay lịch sử ván đấu.
+- Người dùng chưa tự đổi được mật khẩu; quên mật khẩu thì nhờ admin đặt lại.
+- Đăng nhập chưa giới hạn số lần thử sai, và chạy HTTP thường (không HTTPS). Chỉ nên
+  chạy trong mạng LAN tin cậy, không đưa thẳng ra Internet.

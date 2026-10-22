@@ -67,9 +67,15 @@ class BotDriver:
         except Exception:
             self.loop.call_soon_threadsafe(self._on_error, job, traceback.format_exc())
         finally:
-            self.loop.call_soon_threadsafe(self.sync)  # có thể đang chờ worker cũ thoát
+            self.loop.call_soon_threadsafe(self._worker_exited, threading.current_thread())
 
     # ---------- event loop ----------
+    def _worker_exited(self, thread):
+        # Luồng chỉ còn vài lệnh cuối; join để is_alive() chắc chắn là False,
+        # nếu không _start sẽ bỏ qua và bot treo ở lượt của nó.
+        thread.join()
+        self.sync()
+
     def _on_progress(self, job, result):
         if job is self.job and job.kind == "search":
             self.room.stats = result

@@ -11,12 +11,15 @@ Mọi lệnh chạy từ thư mục gốc `F:\4.Project\carochess`, dùng Python
 ## Cấu trúc
 - `caro_game.py`: engine (luật, `Position`, `CaroBot` với VCF/VCT/ponder) + game desktop pygame.
   pygame chỉ được import trong `CaroGame.__init__`, nên server và test không cần màn hình.
+- Đăng nhập: `server/auth.py` (SQLite `data/caro.db`, admin từ `.env`, cookie `session`).
+  `/ws` và `/api/*` (trừ login/register) yêu cầu đăng nhập; ghế trong phòng khóa theo tên tài khoản.
+  Test server tự tạo DB tạm và tài khoản qua fixture `client` + `account()`.
 - `server/`: FastAPI. `game.py` = `Room` (ghế, luật, hoàn tác, đổi bên); `bot.py` = `BotDriver`
   (chạy `CaroBot` ở luồng nền, có nghĩ trước); `app.py` = `Hub`, WebSocket `/ws`, `/api/info`,
   `/api/rooms`, phục vụ `web/dist`. Giao thức tin nhắn ghi ở docstring đầu `server/app.py`.
 - `web/`: Vue 3 + Vite, không router/store ngoài. `src/game.js` giữ kết nối WebSocket và
-  trạng thái (tự kết nối lại, giữ ghế bằng token trong localStorage `caro.seat.<MÃ>`).
-  `components/LobbyView.vue`, `GameView.vue`, `CaroBoard.vue` (SVG).
+  trạng thái tài khoản (tự kết nối lại). Màn hình: `LoginView` → `GamesView` (chọn trò,
+  thêm trò mới ở mảng `GAMES`) → `LobbyView` → `GameView` + `CaroBoard` (SVG).
 
 ## Lệnh
 | Việc | Lệnh |

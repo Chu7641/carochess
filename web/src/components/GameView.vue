@@ -1,12 +1,16 @@
 <script setup>
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
-import { leaveRoom, move, restart, sideName, state, undo, X, O } from '../game.js'
+import { leaveRoom, move, respond, restart, showError, sideName, state, toggleReady, undo, X, O } from '../game.js'
 import CaroBoard from './CaroBoard.vue'
 
 const room = computed(() => state.room)
 const you = computed(() => room.value.you)
 const isBot = computed(() => room.value.mode === 'bot')
-const playing = computed(() => room.value.winner === 0 && !room.value.waiting)
+const playing = computed(() => room.value.winner === 0 && !room.value.waiting && room.value.started)
+// Đấu người: đủ hai người nhưng chưa ai đánh, chờ cả hai bấm Sẵn sàng.
+const needReady = computed(() =>
+  room.value.winner === 0 && !room.value.waiting && !room.value.started)
+const iAmReady = computed(() => room.value.ready.includes(you.value))
 const canPlay = computed(() => playing.value && you.value === room.value.current)
 
 const lanIps = ref([])
@@ -25,6 +29,32 @@ onUnmounted(() => clearInterval(ticker))
 
 watch(() => room.value.botThinking, (on) => { if (on) thinkingSince.value = Date.now() },
       { immediate: true })
+watch(() => room.value.notice, (notice) => { if (notice) showError(notice) })
+
+const request = computed(() => {
+  const r = room.value.request  // hiện chỉ có xin đi lại
+  if (!r) return null
+  const mine = r.side === you.value
+  return {
+    mine,
+    canAnswer: !mine && you.value != null,
+    text: mine ? 'Đang chờ đối thủ đồng ý cho bạn đi lại…'
+               : `${player(r.side)?.name ?? sideName(r.side)} xin đi lại.`,
+  }
+})
+const turnLeft = computed(() => {
+  const r = room.value
+  return r.turnLeft == null ? null
+    : Math.max(0, Math.ceil(r.turnLeft - (now.value - r.receivedAt) / 1000))
+})
+
+// Đấu người, ván đang dở: "Ván mới" = chịu thua rồi mở ván mới (máy chủ tính elo).
+function newGame() {
+  const r = room.value
+  if (!isBot.value && playing.value && r.moves
+      && !confirm('Ván chưa xong. Bắt đầu ván mới sẽ tính là bạn thua (trừ elo). Tiếp tục?')) return
+  restart()
+}
 
 const inviteLink = computed(() => {
   const local = ['localhost', '127.0.0.1', '::1', '[::1]'].includes(location.hostname)
@@ -65,12 +95,14 @@ const status = computed(() => {
     }
   }
   if (r.waiting) return { text: 'Đang chờ người chơi thứ hai…', tone: 'muted' }
+  if (!r.started) return { text: 'Chờ hai bên bấm Sẵn sàng…', tone: 'muted' }
   if (r.botThinking) {
     const seconds = Math.max(0, (now.value - thinkingSince.value) / 1000)
     return { text: `Máy đang tính… ${seconds.toFixed(1)}s`, tone: 'blue' }
   }
-  if (r.current === you.value) return { text: `Lượt của bạn (${sideName(you.value)})`, tone: 'green' }
   const other = player(r.current)
+  if (other && !other.online) return { text: `${other.name} mất kết nối, đang chờ quay lại…`, tone: 'muted' }
+  if (r.current === you.value) return { text: `Lượt của bạn (${sideName(you.value)})`, tone: 'green' }
   return { text: `Lượt ${sideName(r.current)} · ${other?.name ?? ''}`, tone: 'muted' }
 })
 
@@ -91,12 +123,36 @@ const stats = computed(() => {
     <aside class="card side">
       <div class="status" :class="status.tone">{{ status.text }}</div>
 
+      <button v-if="needReady && you" class="btn block" :class="iAmReady ? '' : 'green'"
+              @click="toggleReady">
+        {{ iAmReady ? 'Hủy sẵn sàng (đang chờ đối thủ)' : 'Sẵn sàng' }}
+      </button>
+
+      <div v-if="request" class="request" :class="{ ask: request.canAnswer }" role="status">
+        <span>{{ request.text }}</span>
+        <div v-if="request.canAnswer" class="row">
+          <button class="btn green" @click="respond(true)">Đồng ý</button>
+          <button class="btn red" @click="respond(false)">Từ chối</button>
+        </div>
+      </div>
+
       <ul class="players">
         <li v-for="side in [X, O]" :key="side" :class="{ turn: playing && room.current === side }">
           <span class="dot" :class="side === X ? 'x' : 'o'">{{ sideName(side) }}</span>
           <span class="pname">
             {{ player(side)?.name ?? 'Đang chờ…' }}
             <em v-if="side === you" class="small muted">(bạn)</em>
+          </span>
+          <span v-if="needReady && room.ready.includes(side)" class="ready small">✓ Sẵn sàng</span>
+          <span v-if="turnLeft != null && room.current === side" class="clock"
+                :class="{ low: turnLeft <= 10 }" :title="`Mỗi lượt ${room.turnSeconds} giây`">
+            ⏱ {{ turnLeft }}s
+          </span>
+          <span v-if="player(side)?.elo != null" class="elo small">
+            {{ player(side).elo }}
+            <b v-if="player(side).eloDelta" :class="player(side).eloDelta > 0 ? 'up' : 'down'">
+              {{ player(side).eloDelta > 0 ? '+' : '' }}{{ player(side).eloDelta }}
+            </b>
           </span>
           <span v-if="player(side) && !player(side).bot" class="online"
                 :class="{ off: !player(side).online }"
@@ -123,13 +179,17 @@ const stats = computed(() => {
       </div>
 
       <div class="actions">
-        <button v-if="isBot" class="btn green" :disabled="!you || !room.moves" @click="undo">
-          Hoàn tác
+        <button class="btn green" :disabled="!you || !room.moves || request?.mine || (!isBot && !playing)"
+                @click="undo">
+          {{ isBot ? 'Hoàn tác' : 'Xin đi lại' }}
         </button>
-        <button class="btn red" :disabled="!you" @click="restart">Ván mới</button>
+        <button class="btn red" :disabled="!you" @click="newGame">Ván mới</button>
         <button class="btn" @click="leaveRoom">Rời phòng</button>
       </div>
-      <p v-if="!isBot && you" class="small muted">Mỗi ván mới hai bên đổi quân để lần lượt đi trước.</p>
+      <p v-if="!isBot && you" class="small muted">
+        Ván đấu người được tính elo. Mỗi lượt có {{ room.turnSeconds }} giây; hết giờ, rời phòng hoặc
+        bấm "Ván mới" khi ván chưa xong thì bị tính thua. Mỗi ván mới hai bên đổi quân.
+      </p>
     </aside>
   </section>
 </template>
@@ -148,6 +208,16 @@ const stats = computed(() => {
 .status.red { color: var(--red); }
 .status.blue { color: var(--blue); }
 .status.muted { color: var(--muted); }
+.request {
+  display: grid;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px dashed var(--panel-border);
+  color: var(--muted);
+  text-align: center;
+}
+.request.ask { border: 2px solid var(--accent); color: var(--text); font-weight: 600; }
 .players { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
 .players li {
   display: flex;
@@ -166,6 +236,12 @@ const stats = computed(() => {
 .dot.x { background: var(--stone-x); }
 .dot.o { background: var(--stone-o); }
 .pname { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ready { color: var(--green); font-weight: 700; white-space: nowrap; }
+.clock { font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.clock.low { color: var(--red); }
+.elo { color: var(--muted); white-space: nowrap; }
+.elo .up { color: var(--green); }
+.elo .down { color: var(--red); }
 .online { width: 9px; height: 9px; border-radius: 50%; background: #2fae62; flex: none; }
 .online.off { background: #b9b2a6; }
 .meta { margin: 0; display: grid; gap: 4px; }
