@@ -157,6 +157,7 @@ export function leaveRoom() {
 }
 
 export const move = (r, c) => send({ type: 'move', r, c })
+export const movePiece = (fr, fc, tr, tc) => send({ type: 'move_piece', fr, fc, tr, tc })
 export const undo = () => send({ type: 'undo' })
 export const restart = () => send({ type: 'restart' })
 export const passTurn = () => send({ type: 'pass' })

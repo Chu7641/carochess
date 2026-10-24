@@ -5,6 +5,7 @@ import { chooseGame } from '../game.js'
 const GAMES = [
   { id: 'caro', name: 'Cờ caro', icon: '⚫🔴', desc: '5 quân liên tiếp là thắng. Đấu với máy hoặc với bạn trong mạng LAN.' },
   { id: 'go', name: 'Cờ vây', icon: '⚪⚫', desc: 'Vây bắt quân và chiếm đất. Hỗ trợ bàn 9×9, 13×13, 19×19 qua LAN hoặc đấu với máy.' },
+  { id: 'xiangqi', name: 'Cờ tướng', icon: '帥將', desc: 'Đấu trí trên chiến trường Hán - Sở. Đấu với máy các cấp độ từ Dễ đến Khó.' },
 ]
 </script>
 

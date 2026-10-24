@@ -6,7 +6,10 @@ Project có kèm bản desktop (pygame) dùng chung engine.
 
 - **Tài khoản:** đăng ký/đăng nhập, lưu trong SQLite (`data/caro.db`). Tài khoản mới phải
   được admin phê duyệt mới đăng nhập được. Bấm vào tên mình trên thanh tiêu đề để đổi mật khẩu.
-  Đăng nhập xong thì chọn trò chơi: cờ caro hoặc cờ vây.
+  Đăng nhập xong thì chọn trò chơi: cờ caro, cờ vây hoặc cờ tướng.
+- **Cờ tướng:** hiện chỉ có đấu với máy, 3 mức (Dễ 0,5 giây, Vừa 1,5 giây, Khó 4 giây mỗi nước;
+  bot alpha-beta). Đủ luật: cản chân Mã, cản mắt Tượng, Pháo ăn qua ngòi, lộ mặt tướng; hết nước đi
+  là thua, lặp thế cờ 3 lần là hòa (chưa có luật cấm chiếu mãi, đuổi mãi). Bấm quân để thấy các ô đi được.
 - **Cờ vây:** bàn 9×9, 13×13, 19×19, có bắt quân, cấm tự sát, luật Kiếp, bỏ lượt và
   đếm điểm diện tích kèm komi (chưa tự loại quân chết: hãy bắt hết trước khi cùng bỏ lượt).
   Đấu người dùng chung sẵn sàng, đồng hồ, elo; đấu máy có 3 mức (bot Monte Carlo, mạnh nhất ở 9×9).
@@ -113,6 +116,7 @@ Vite chuyển tiếp `/api` và `/ws` sang cổng 8000. Sửa giao diện xong, 
 
 .venv\Scripts\python.exe caro_game.py --self-test   # engine: luật, VCF/VCT, make/unmake
 .venv\Scripts\python.exe go_game.py --self-test     # cờ vây: luật, đếm điểm, bot
+.venv\Scripts\python.exe xiangqi_game.py --self-test   # cờ tướng: luật, perft, bot
 .venv\Scripts\python.exe -m pytest server           # máy chủ: phòng, WebSocket, bot
 ```
 
@@ -121,6 +125,7 @@ Vite chuyển tiếp `/api` và `/ws` sang cổng 8000. Sửa giao diện xong, 
 ```
 caro_game.py          Engine (luật, bot) + game desktop pygame
 go_game.py            Engine cờ vây: luật, đếm điểm, bot Monte Carlo
+xiangqi_game.py       Engine cờ tướng: luật, bot alpha-beta
 GEMINI.md             Quy tắc cho agent viết code (Gemini/Antigravity CLI)
 server/
   app.py              FastAPI: đăng nhập, WebSocket /ws, /api/rooms, phục vụ web/dist
@@ -128,12 +133,14 @@ server/
   game.py             Phòng chơi: ghế, luật, hoàn tác, đổi bên
   bot.py              Chạy bot ở luồng nền cho mỗi phòng, có nghĩ trước
   go_room.py, go_bot.py  Phòng chơi và bot nền cho cờ vây
+  xiangqi_room.py, xiangqi_bot.py  Phòng chơi và bot nền cho cờ tướng
   tests/              Kiểm thử máy chủ (pytest)
 web/
   src/game.js         Tài khoản, kết nối WebSocket, trạng thái, tự kết nối lại
   src/components/     LoginView, GamesView (chọn trò), LobbyView (sảnh), GameView (ván cờ),
                       CaroBoard (bàn cờ SVG), AdminView (quản trị),
-                      GoLobbyView / GoGameView / GoBoard (cờ vây)
+                      GoLobbyView / GoGameView / GoBoard (cờ vây),
+                      XiangqiLobbyView / XiangqiGameView / XiangqiBoard (cờ tướng)
 .claude/skills/       Hướng dẫn cho Claude Code khi làm việc với project
 ```
 

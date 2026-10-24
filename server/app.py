@@ -5,19 +5,21 @@ Ghế trong phòng gắn với tài khoản, nên tải lại trang hay đổi m
 
 Giao thức WebSocket (/ws), mọi tin nhắn là JSON có trường "type":
   client -> server
-    create  {mode: "pvp"|"bot", rows, cols, strict, level, side}
-    join    {room}
-    move    {r, c}
-    undo    {}                        đấu người: thành yêu cầu, chờ đối thủ đồng ý
-    restart {}                        đấu người, ván đang dở: người bấm bị tính thua
-    ready   {}                        đấu người: bật/tắt sẵn sàng; cả hai sẵn sàng thì ván bắt đầu
-    respond {accept: bool}            đối thủ trả lời yêu cầu đi lại (room.request)
+    create      {game: "caro"|"go"|"xiangqi", mode: "pvp"|"bot", rows, cols, strict, level, side, size, komi}
+    join        {room}
+    move        {r, c}                    caro / cờ vây
+    move_piece  {fr, fc, tr, tc}          cờ tướng
+    pass        {}                        cờ vây
+    undo        {}                        đấu người: thành yêu cầu, chờ đối thủ đồng ý
+    restart     {}                        đấu người, ván đang dở: người bấm bị tính thua
+    ready       {}                        đấu người: bật/tắt sẵn sàng; cả hai sẵn sàng thì ván bắt đầu
+    respond     {accept: bool}            đối thủ trả lời yêu cầu đi lại (room.request)
   Ván đấu người kết thúc (thắng, hòa, hết giờ, rời phòng, bỏ ván) thì tính elo (Hub.rate).
-    leave   {}
+    leave       {}
   server -> client
-    joined  {room, side}              side = null: người xem
-    state   {room: <Room.snapshot>}
-    error   {message}
+    joined      {room, side}              side = null: người xem
+    state       {room: <Room.snapshot>}
+    error       {message}
 """
 
 from __future__ import annotations
@@ -36,12 +38,15 @@ from pydantic import BaseModel
 
 from caro_game import EMPTY, LEVELS, O, X
 from go_game import BLACK, GO_LEVELS, GO_SIZES, WHITE
+from xiangqi_game import RED as XIANGQI_RED, XIANGQI_LEVELS
 
 from . import auth
 from .bot import BotDriver
 from .game import MAX_SIZE, MIN_SIZE, GameError, Room, new_code
 from .go_bot import GoBotDriver
 from .go_room import GoRoom
+from .xiangqi_bot import XiangqiBotDriver
+from .xiangqi_room import XiangqiRoom
 
 log = logging.getLogger("caro.server")
 
@@ -67,6 +72,15 @@ class Hub:
         loop = asyncio.get_running_loop()
         code = new_code(self.rooms)
         game_type = msg.get("game", "caro")
+        if game_type == "xiangqi":
+            room = XiangqiRoom(code, msg.get("mode"),
+                               level=msg.get("level", 1),
+                               human_side=msg.get("side", XIANGQI_RED))
+            self.rooms[code] = room
+            self.clients[code] = set()
+            if room.mode == "bot":
+                self.bots[code] = XiangqiBotDriver(room, loop, lambda: self.publish(code))
+            return self.join(client, room, prefer=msg.get("side", XIANGQI_RED))
         if game_type == "go":
             room = GoRoom(code, msg.get("mode"),
                           size=msg.get("size", msg.get("rows", 19)),
@@ -347,6 +361,8 @@ def info():
                    for i, (name, seconds, _depth, _limit) in enumerate(LEVELS)],
         "goLevels": [{"id": i, "name": name, "seconds": seconds}
                      for i, (name, seconds) in enumerate(GO_LEVELS)],
+        "xiangqiLevels": [{"id": i, "name": name, "seconds": seconds}
+                          for i, (name, seconds) in enumerate(XIANGQI_LEVELS)],
         "goSizes": list(GO_SIZES),
         "minSize": MIN_SIZE,
         "maxSize": MAX_SIZE,
@@ -406,7 +422,14 @@ async def handle(client, msg):
         raise GameError("Bạn chưa vào phòng nào.")
     side = room.side_of(client.token)
     if kind == "move":
+        if getattr(room, "game_type", "") == "xiangqi":
+            raise GameError("Phòng cờ tướng dùng lệnh di chuyển quân (move_piece).")
         room.place(side, msg.get("r"), msg.get("c"))
+        hub.changed(room)
+    elif kind == "move_piece":
+        if getattr(room, "game_type", "") != "xiangqi" or not hasattr(room, "move"):
+            raise GameError("Phòng này không phải cờ tướng.")
+        room.move(side, msg.get("fr"), msg.get("fc"), msg.get("tr"), msg.get("tc"))
         hub.changed(room)
     elif kind == "pass":
         if hasattr(room, "pass_turn"):

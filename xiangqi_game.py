@@ -10,8 +10,10 @@ Kiểm tra luật và engine:
 from __future__ import annotations
 
 import argparse
+from dataclasses import dataclass
 import random
 import sys
+import threading
 import time
 
 if sys.stdout and hasattr(sys.stdout, "reconfigure"):
@@ -705,6 +707,49 @@ class XiangqiBoard:
         elif p == 'k':
             self.kings[BLACK] = (fr, fc)
 
+    def _push_bot(self, move: tuple[int, int, int, int]) -> str:
+        """Hàm nội bộ đi nước cực nhanh cho bot (cập nhật luôn mã băm Zobrist)."""
+        fr, fc, tr, tc = move
+        p = self.board[fr][fc]
+        captured = self.board[tr][tc]
+
+        self.zobrist ^= ZOBRIST_PIECES[p][fr * 9 + fc]
+        if captured != EMPTY:
+            self.zobrist ^= ZOBRIST_PIECES[captured][tr * 9 + tc]
+        self.zobrist ^= ZOBRIST_PIECES[p][tr * 9 + tc]
+        self.zobrist ^= ZOBRIST_SIDE
+
+        self.board[tr][tc] = p
+        self.board[fr][fc] = EMPTY
+        self.side_to_move = 3 - self.side_to_move
+
+        if p == 'K':
+            self.kings[RED] = (tr, tc)
+        elif p == 'k':
+            self.kings[BLACK] = (tr, tc)
+
+        return captured
+
+    def _pop_bot(self, move: tuple[int, int, int, int], captured: str):
+        """Hàm nội bộ hoàn tác cực nhanh cho bot."""
+        fr, fc, tr, tc = move
+        p = self.board[tr][tc]
+
+        self.board[fr][fc] = p
+        self.board[tr][tc] = captured
+        self.side_to_move = 3 - self.side_to_move
+
+        if p == 'K':
+            self.kings[RED] = (fr, fc)
+        elif p == 'k':
+            self.kings[BLACK] = (fr, fc)
+
+        self.zobrist ^= ZOBRIST_PIECES[p][tr * 9 + tc]
+        if captured != EMPTY:
+            self.zobrist ^= ZOBRIST_PIECES[captured][tr * 9 + tc]
+        self.zobrist ^= ZOBRIST_PIECES[p][fr * 9 + fc]
+        self.zobrist ^= ZOBRIST_SIDE
+
     def result(self) -> dict:
         """Kiểm tra trạng thái kết thúc ván cờ.
 
@@ -761,6 +806,417 @@ class XiangqiBoard:
             nodes += self.perft(depth - 1)
             self._pop_perft(m, captured)
         return nodes
+
+
+# ==============================================================================
+# BOT CỜ TƯỚNG (XIANGQI BOT)
+# ==============================================================================
+
+XIANGQI_LEVELS = [
+    ("Dễ", 0.5),
+    ("Vừa", 1.5),
+    ("Khó", 4.0),
+]
+
+
+@dataclass
+class XiangqiSearchResult:
+    """Kết quả tính toán nước đi của bot cờ tướng."""
+    move: tuple[int, int, int, int] | None
+    score: int
+    depth: int
+    nodes: int
+    elapsed: float
+
+
+# Bảng giá trị vật chất của từng loại quân
+PIECE_VALUES: dict[str, int] = {
+    'R': 900,
+    'C': 450,
+    'N': 400,
+    'B': 200,
+    'A': 200,
+    'P': 100,  # Qua sông là 200
+    'K': 0,
+}
+
+# Bảng điểm vị trí (PST) đơn giản cho quân Đỏ (hàng 0-9, cột 0-8)
+# Quân Đen sẽ dùng chỉ số hàng đối xứng: 9 - r
+
+PST_PAWN_RED = (
+    ( 0,  3,  6,  9, 12,  9,  6,  3,  0),  # Hàng 0 (đáy cung đối phương)
+    (18, 36, 56, 80, 90, 80, 56, 36, 18),  # Hàng 1
+    (14, 26, 42, 60, 70, 60, 42, 26, 14),  # Hàng 2
+    (10, 20, 30, 45, 55, 45, 30, 20, 10),  # Hàng 3
+    ( 6, 12, 18, 25, 30, 25, 18, 12,  6),  # Hàng 4 (vừa qua sông)
+    ( 0,  0,  0,  0,  0,  0,  0,  0,  0),  # Hàng 5 (bờ sông sân nhà)
+    ( 0,  0, -2,  0,  4,  0, -2,  0,  0),  # Hàng 6 (vị trí ban đầu)
+    ( 0,  0,  0,  0,  0,  0,  0,  0,  0),  # Hàng 7
+    ( 0,  0,  0,  0,  0,  0,  0,  0,  0),  # Hàng 8
+    ( 0,  0,  0,  0,  0,  0,  0,  0,  0),  # Hàng 9
+)
+
+PST_HORSE = (
+    ( 4,  8, 16, 12,  4, 12, 16,  8,  4),
+    ( 4, 10, 28, 16,  8, 16, 28, 10,  4),
+    (12, 16, 30, 36, 20, 36, 30, 16, 12),
+    ( 8, 24, 34, 40, 24, 40, 34, 24,  8),
+    ( 6, 16, 24, 32, 20, 32, 24, 16,  6),
+    ( 4, 12, 16, 24, 12, 24, 16, 12,  4),
+    ( 2,  8, 12, 14, 10, 14, 12,  8,  2),
+    ( 2,  4,  6,  8,  4,  8,  6,  4,  2),
+    ( 0,  2,  4,  4, -2,  4,  4,  2,  0),
+    ( 0, -4,  0,  0,  0,  0,  0, -4,  0),
+)
+
+PST_CANNON = (
+    ( 6,  8,  4,  0,  0,  0,  4,  8,  6),
+    ( 2,  4,  0, -4, -6, -4,  0,  4,  2),
+    ( 0,  4,  4,  4,  4,  4,  4,  4,  0),
+    ( 0,  2,  2,  4,  6,  4,  2,  2,  0),
+    ( 0,  0,  2,  6,  8,  6,  2,  0,  0),
+    ( 0,  0,  0,  2,  4,  2,  0,  0,  0),
+    ( 0,  0,  0,  0,  0,  0,  0,  0,  0),
+    (-2,  0,  4,  2,  2,  2,  4,  0, -2),
+    ( 0,  0,  0,  0,  0,  0,  0,  0,  0),
+    ( 0,  0, -2,  0,  4,  0, -2,  0,  0),
+)
+
+PST_ROOK = (
+    (14, 14, 12, 18, 16, 18, 12, 14, 14),
+    (16, 20, 18, 24, 26, 24, 18, 20, 16),
+    (12, 12, 12, 18, 18, 18, 12, 12, 12),
+    (12, 18, 16, 22, 22, 22, 16, 18, 12),
+    (12, 14, 12, 18, 18, 18, 12, 14, 12),
+    ( 8, 10,  8, 14, 14, 14,  8, 10,  8),
+    ( 8,  8,  8,  8,  8,  8,  8,  8,  8),
+    ( 0,  6,  4,  4,  0,  4,  4,  6,  0),
+    ( 4,  8,  6, 12,  0, 12,  6,  8,  4),
+    ( 0,  6,  4,  4,  0,  4,  4,  6,  0),
+)
+
+MATE_SCORE = 100000
+MATE_THRESHOLD = 90000
+
+TT_EXACT = 0
+TT_LOWERBOUND = 1
+TT_UPPERBOUND = 2
+
+
+def evaluate_board(board: XiangqiBoard) -> int:
+    """Hàm đánh giá tĩnh bàn cờ từ góc nhìn của bên tới lượt đi (board.side_to_move)."""
+    red_score = 0
+    black_score = 0
+    b = board.board
+    for r in range(10):
+        row = b[r]
+        for c in range(9):
+            p = row[c]
+            if p == EMPTY:
+                continue
+            if p.isupper():
+                if p == 'R':
+                    red_score += 900 + PST_ROOK[r][c]
+                elif p == 'C':
+                    red_score += 450 + PST_CANNON[r][c]
+                elif p == 'N':
+                    red_score += 400 + PST_HORSE[r][c]
+                elif p == 'B':
+                    red_score += 200
+                elif p == 'A':
+                    red_score += 200
+                elif p == 'P':
+                    red_score += (200 if r <= 4 else 100) + PST_PAWN_RED[r][c]
+            else:
+                br = 9 - r
+                if p == 'r':
+                    black_score += 900 + PST_ROOK[br][c]
+                elif p == 'c':
+                    black_score += 450 + PST_CANNON[br][c]
+                elif p == 'n':
+                    black_score += 400 + PST_HORSE[br][c]
+                elif p == 'b':
+                    black_score += 200
+                elif p == 'a':
+                    black_score += 200
+                elif p == 'p':
+                    black_score += (200 if r >= 5 else 100) + PST_PAWN_RED[br][c]
+
+    score = red_score - black_score
+    return score if board.side_to_move == RED else -score
+
+
+class SearchInterrupted(Exception):
+    """Ngoại lệ nội bộ khi hết giờ suy nghĩ hoặc nhận tín hiệu hủy."""
+    pass
+
+
+class XiangqiBot:
+    """Bot cờ tướng sử dụng Iterative Deepening Negamax với Alpha-Beta."""
+
+    def __init__(self, level: int = 1):
+        if not (0 <= level < len(XIANGQI_LEVELS)):
+            raise ValueError(f"Độ khó bot không hợp lệ: {level}")
+        self.level = level
+        self.time_limit = XIANGQI_LEVELS[level][1]
+        self.tt: dict[int, tuple[int, int, int, tuple[int, int, int, int] | None]] = {}
+        self.history: dict[tuple[int, int, int, int], int] = {}
+        self.nodes = 0
+
+    def choose(self, board: XiangqiBoard, cancel_event: threading.Event | None = None) -> XiangqiSearchResult:
+        """Chọn nước đi tốt nhất cho bên tới lượt.
+
+        Không làm thay đổi bàn cờ truyền vào.
+        """
+        b = board.copy()
+        if len(self.tt) > 1_000_000:  # giữ TT giữa các nước nhưng không để phình mãi
+            self.tt.clear()
+        start_time = time.perf_counter()
+        deadline = start_time + self.time_limit
+        self.nodes = 0
+
+        legals = b.legal_moves()
+        if not legals:
+            return XiangqiSearchResult(None, -MATE_SCORE, 0, 0, 0.0)
+
+        # Nếu cancel_event đã set trước thì trả ngay một nước hợp lệ
+        if cancel_event is not None and cancel_event.is_set():
+            return XiangqiSearchResult(legals[0], 0, 0, 0, 0.0)
+
+        best_move = legals[0]
+        best_score = 0
+        completed_depth = 0
+
+        for depth in range(1, 30):
+            try:
+                score, move, _ = self._search_root(b, depth, deadline, cancel_event)
+                best_score = score
+                best_move = move
+                completed_depth = depth
+                # Nếu đã phát hiện chiếu bí thì dừng sớm
+                if abs(score) >= MATE_THRESHOLD:
+                    break
+            except SearchInterrupted:
+                break
+
+            if time.perf_counter() >= deadline or (cancel_event is not None and cancel_event.is_set()):
+                break
+
+        elapsed = time.perf_counter() - start_time
+
+        # Mức "Dễ": chọn ngẫu nhiên trong các nước chênh <= 30 điểm so với nước tốt nhất.
+        # Điểm ở gốc alpha-beta chỉ là chặn trên (nước tệ cũng báo bằng alpha), nên chấm lại
+        # từng nước bằng tìm tĩnh cửa sổ đầy đủ. Thấy chiếu bí thì vẫn đi nước chiếu bí.
+        if self.level == 0 and abs(best_score) < MATE_THRESHOLD:
+            scored = []
+            try:
+                for m in legals:
+                    cap = b._push_bot(m)
+                    try:
+                        scored.append((m, -self._quiescence(
+                            b, -MATE_SCORE - 1, MATE_SCORE + 1, 1, time.perf_counter() + 1.0, cancel_event)))
+                    finally:
+                        b._pop_bot(m, cap)
+            except SearchInterrupted:
+                scored = []
+            if scored:
+                top = max(sc for _, sc in scored)
+                best_move = random.choice([m for m, sc in scored if sc >= top - 30])
+
+        return XiangqiSearchResult(
+            move=best_move,
+            score=best_score,
+            depth=completed_depth,
+            nodes=self.nodes,
+            elapsed=round(elapsed, 4),
+        )
+
+    def _search_root(
+        self,
+        board: XiangqiBoard,
+        depth: int,
+        deadline: float,
+        cancel_event: threading.Event | None,
+    ) -> tuple[int, tuple[int, int, int, int], list[tuple[tuple[int, int, int, int], int]]]:
+        moves = board.legal_moves()
+        if not moves:
+            return -MATE_SCORE, moves[0] if moves else None, []
+
+        zob = board.zobrist
+        tt_entry = self.tt.get(zob)
+        hash_move = tt_entry[3] if tt_entry else None
+
+        def move_priority(m):
+            if m == hash_move:
+                return 2_000_000
+            tr, tc = m[2], m[3]
+            target = board.board[tr][tc]
+            if target != EMPTY:
+                vic = PIECE_VALUES.get(target.upper(), 0)
+                att = PIECE_VALUES.get(board.board[m[0]][m[1]].upper(), 0)
+                return 1_000_000 + vic * 10 - att
+            return self.history.get(m, 0)
+
+        moves.sort(key=move_priority, reverse=True)
+
+        alpha = -MATE_SCORE - 1
+        beta = MATE_SCORE + 1
+        best_score = -MATE_SCORE - 1
+        best_move = moves[0]
+        move_scores: list[tuple[tuple[int, int, int, int], int]] = []
+
+        for m in moves:
+            cap = board._push_bot(m)
+            try:
+                score = -self._negamax(board, depth - 1, -beta, -alpha, 1, deadline, cancel_event)
+            finally:
+                board._pop_bot(m, cap)
+
+            move_scores.append((m, score))
+            if score > best_score:
+                best_score = score
+                best_move = m
+            if score > alpha:
+                alpha = score
+
+        self.tt[zob] = (depth, TT_EXACT, best_score, best_move)
+        return best_score, best_move, move_scores
+
+    def _negamax(
+        self,
+        board: XiangqiBoard,
+        depth: int,
+        alpha: int,
+        beta: int,
+        ply: int,
+        deadline: float,
+        cancel_event: threading.Event | None,
+    ) -> int:
+        self.nodes += 1
+        if (self.nodes & 1023) == 0:
+            if (cancel_event is not None and cancel_event.is_set()) or (time.perf_counter() >= deadline):
+                raise SearchInterrupted()
+
+        if depth <= 0:
+            return self._quiescence(board, alpha, beta, ply, deadline, cancel_event)
+
+        zob = board.zobrist
+        tt_entry = self.tt.get(zob)
+        hash_move = None
+        if tt_entry is not None:
+            tt_depth, tt_flag, tt_score, tt_move = tt_entry
+            hash_move = tt_move
+            if tt_depth >= depth:
+                adj_score = tt_score
+                if adj_score > MATE_THRESHOLD:
+                    adj_score -= ply
+                elif adj_score < -MATE_THRESHOLD:
+                    adj_score += ply
+
+                if tt_flag == TT_EXACT:
+                    return adj_score
+                elif tt_flag == TT_LOWERBOUND and adj_score >= beta:
+                    return adj_score
+                elif tt_flag == TT_UPPERBOUND and adj_score <= alpha:
+                    return adj_score
+
+        moves = board.legal_moves()
+        if not moves:
+            return -MATE_SCORE + ply
+
+        def move_priority(m):
+            if m == hash_move:
+                return 2_000_000
+            tr, tc = m[2], m[3]
+            target = board.board[tr][tc]
+            if target != EMPTY:
+                vic = PIECE_VALUES.get(target.upper(), 0)
+                att = PIECE_VALUES.get(board.board[m[0]][m[1]].upper(), 0)
+                return 1_000_000 + vic * 10 - att
+            return self.history.get(m, 0)
+
+        moves.sort(key=move_priority, reverse=True)
+
+        best_score = -MATE_SCORE - 1
+        best_move = None
+        orig_alpha = alpha
+
+        for m in moves:
+            cap = board._push_bot(m)
+            try:
+                score = -self._negamax(board, depth - 1, -beta, -alpha, ply + 1, deadline, cancel_event)
+            finally:
+                board._pop_bot(m, cap)
+
+            if score > best_score:
+                best_score = score
+                best_move = m
+            if score > alpha:
+                alpha = score
+            if alpha >= beta:
+                if board.board[m[2]][m[3]] == EMPTY:
+                    self.history[m] = self.history.get(m, 0) + depth * depth
+                break
+
+        flag = TT_EXACT
+        if best_score <= orig_alpha:
+            flag = TT_UPPERBOUND
+        elif best_score >= beta:
+            flag = TT_LOWERBOUND
+
+        stored_score = best_score
+        if stored_score > MATE_THRESHOLD:
+            stored_score += ply
+        elif stored_score < -MATE_THRESHOLD:
+            stored_score -= ply
+
+        self.tt[zob] = (depth, flag, stored_score, best_move)
+        return best_score
+
+    def _quiescence(
+        self,
+        board: XiangqiBoard,
+        alpha: int,
+        beta: int,
+        ply: int,
+        deadline: float,
+        cancel_event: threading.Event | None,
+    ) -> int:
+        self.nodes += 1
+        if (self.nodes & 1023) == 0:
+            if (cancel_event is not None and cancel_event.is_set()) or (time.perf_counter() >= deadline):
+                raise SearchInterrupted()
+
+        stand_pat = evaluate_board(board)
+        if stand_pat >= beta:
+            return beta
+        if stand_pat > alpha:
+            alpha = stand_pat
+
+        all_moves = board.legal_moves()
+        captures = [m for m in all_moves if board.board[m[2]][m[3]] != EMPTY]
+        if not captures:
+            return alpha
+
+        captures.sort(
+            key=lambda m: PIECE_VALUES.get(board.board[m[2]][m[3]].upper(), 0) * 10
+            - PIECE_VALUES.get(board.board[m[0]][m[1]].upper(), 0),
+            reverse=True,
+        )
+
+        for m in captures:
+            cap = board._push_bot(m)
+            try:
+                score = -self._quiescence(board, -beta, -alpha, ply + 1, deadline, cancel_event)
+            finally:
+                board._pop_bot(m, cap)
+
+            if score >= beta:
+                return beta
+            if score > alpha:
+                alpha = score
+
+        return alpha
 
 
 def self_test():
@@ -988,6 +1444,68 @@ def self_test():
         assert game_b.position_counts == init_counts, f"Ván {game_idx}: position_counts sau khi undo không khớp"
 
     print("✓ Test 10: 30 ván ngẫu nhiên đối chiếu legal_moves() và hoàn tác hoàn hảo - THÀNH CÔNG")
+
+    # 11. Kiểm thử Bot Cờ Tướng (XiangqiBot)
+    print("Đang chạy Test 11: Kiểm thử bot cờ tướng...")
+    # 11.1. choose() không đổi FEN gốc
+    bot_b = XiangqiBoard()
+    orig_fen = bot_b.to_fen()
+    bot_tester = XiangqiBot(level=0)
+    bot_tester.time_limit = 0.05
+    bot_res = bot_tester.choose(bot_b)
+    assert bot_b.to_fen() == orig_fen, "choose() đã làm thay đổi FEN gốc!"
+    assert bot_res.move is not None
+
+    # 11.2. cancel_event đã set thì trả ngay nước hợp lệ
+    cancel = threading.Event()
+    cancel.set()
+    bot_res_cancel = bot_tester.choose(bot_b, cancel_event=cancel)
+    assert bot_res_cancel.move is not None
+    ok, _ = bot_b.is_legal(bot_res_cancel.move)
+    assert ok, "cancel_event trả về nước không hợp lệ"
+
+    # 11.3. bot thấy chiếu bí 1 nước
+    fen_mate = "3ka4/3r5/9/9/9/9/9/9/9/R4K3 w"
+    b_mate = XiangqiBoard(fen_mate)
+    bot_mate = XiangqiBot(level=1)
+    bot_mate.time_limit = 0.5
+    res_mate = bot_mate.choose(b_mate)
+    assert res_mate.move == (9, 0, 0, 0), f"Bot không thấy chiếu bí! Chọn {res_mate.move}"
+
+    # 11.4. bot không bỏ Xe cho không ở thế đơn giản
+    fen_save = "3k5/9/9/4p4/4R4/9/P8/9/9/4K4 w"
+    b_save = XiangqiBoard(fen_save)
+    bot_save = XiangqiBot(level=1)
+    bot_save.time_limit = 0.5
+    res_save = bot_save.choose(b_save)
+    fr, fc, tr, tc = res_save.move
+    assert fr == 4 and fc == 4, f"Bot bỏ Xe! Chọn đi quân ở ({fr}, {fc})"
+
+    # 11.5. bot Khó thắng bot Dễ trong ít nhất 1 ván ngắn (<= 120 nước)
+    print("  Đang chạy ván đấu: Bot Khó (Đỏ) vs Bot Dễ (Đen)...")
+    b_game = XiangqiBoard()
+    bot_hard = XiangqiBot(level=2)
+    bot_hard.time_limit = 0.08
+    bot_easy = XiangqiBot(level=0)
+    bot_easy.time_limit = 0.01
+
+    winner = None
+    for ply in range(120):
+        if b_game.side_to_move == RED:
+            r_move = bot_hard.choose(b_game)
+        else:
+            r_move = bot_easy.choose(b_game)
+
+        if r_move.move is None:
+            break
+        b_game.play(r_move.move)
+        res_game = b_game.result()
+        if res_game["over"]:
+            winner = res_game["winner"]
+            break
+
+    assert winner == RED, f"Bot Khó không thắng được bot Dễ! winner={winner}"
+    print("✓ Test 11: Kiểm thử bot cờ tướng - THÀNH CÔNG")
 
     print("\n===> TẤT CẢ SELF-TEST CỜ TƯỚNG ĐỀU ĐẠT! <===")
 

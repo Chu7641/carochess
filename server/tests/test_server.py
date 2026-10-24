@@ -573,3 +573,136 @@ def test_go_bot_replies(client):
         room = state_where(ws, lambda r: r["moves"] == 2)
         assert room["current"] == 1 and not room["botThinking"]
 
+
+# ---------- Cờ tướng (Xiangqi) ----------
+def test_xiangqi_room_mode_and_settings():
+    from server.xiangqi_room import XiangqiRoom
+    with pytest.raises(GameError):
+        XiangqiRoom("XQ", "pvp")
+    with pytest.raises(GameError):
+        XiangqiRoom("XQ", "bot", level=99)
+    with pytest.raises(GameError):
+        XiangqiRoom("XQ", "bot", human_side=99)
+    room = XiangqiRoom("XQ", "bot", level=0, human_side=1)
+    assert room.snapshot()["game"] == "xiangqi"
+
+
+def test_xiangqi_bot_replies_over_websocket(client, monkeypatch):
+    monkeypatch.setattr("xiangqi_game.XIANGQI_LEVELS", [("Dễ", 0.05), ("Vừa", 0.05), ("Khó", 0.05)])
+    with client.websocket_connect("/ws", headers=account(client, "xq_red")) as ws:
+        # Cầm Đỏ đi trước
+        ws.send_json({"type": "create", "game": "xiangqi", "mode": "bot", "level": 0, "side": 1})
+        assert receive_until(ws, lambda m: m["type"] == "joined")["side"] == 1
+        # Đi Pháo 2 bình 5: (7, 1) -> (7, 4)
+        ws.send_json({"type": "move_piece", "fr": 7, "fc": 1, "tr": 7, "tc": 4})
+        room = state_where(ws, lambda r: r["moves"] == 2)
+        assert room["current"] == 1 and not room["botThinking"]
+        assert room["lastMove"] is not None
+
+        # Hoàn tác
+        ws.send_json({"type": "undo"})
+        room = state_where(ws, lambda r: r["moves"] == 0)
+        assert room["current"] == 1
+
+
+def test_xiangqi_bot_moves_first_when_human_is_black(client, monkeypatch):
+    monkeypatch.setattr("xiangqi_game.XIANGQI_LEVELS", [("Dễ", 0.05), ("Vừa", 0.05), ("Khó", 0.05)])
+    with client.websocket_connect("/ws", headers=account(client, "xq_black")) as ws:
+        # Cầm Đen (2) -> bot cầm Đỏ (1) tự đi nước đầu
+        ws.send_json({"type": "create", "game": "xiangqi", "mode": "bot", "level": 0, "side": 2})
+        assert receive_until(ws, lambda m: m["type"] == "joined")["side"] == 2
+        room = state_where(ws, lambda r: r["moves"] == 1)
+        assert room["current"] == 2 and not room["botThinking"]
+
+
+def test_xiangqi_rejects_bad_moves_and_bad_data(client):
+    with client.websocket_connect("/ws", headers=account(client, "xq_err")) as ws:
+        ws.send_json({"type": "create", "game": "xiangqi", "mode": "bot", "level": 0, "side": 1})
+        receive_until(ws, lambda m: m["type"] == "joined")
+
+        # Nước sai luật (Xe nhảy chéo)
+        ws.send_json({"type": "move_piece", "fr": 9, "fc": 0, "tr": 8, "tc": 1})
+        err = receive_until(ws, lambda m: m["type"] == "error")["message"]
+        assert "Xe" in err or "không hợp lệ" in err
+
+        # fr là chuỗi
+        ws.send_json({"type": "move_piece", "fr": "7", "fc": 1, "tr": 7, "tc": 4})
+        err = receive_until(ws, lambda m: m["type"] == "error")["message"]
+        assert "không hợp lệ" in err
+
+        # Thiếu trường
+        ws.send_json({"type": "move_piece", "fr": 7, "fc": 1})
+        err = receive_until(ws, lambda m: m["type"] == "error")["message"]
+        assert "không hợp lệ" in err
+
+        # Tin "move" kiểu caro gửi vào phòng cờ tướng
+        ws.send_json({"type": "move", "r": 7, "c": 1})
+        err = receive_until(ws, lambda m: m["type"] == "error")["message"]
+        assert "move_piece" in err or "cờ tướng" in err
+
+        # Kết nối vẫn hoạt động bình thường sau lỗi
+        ws.send_json({"type": "move_piece", "fr": 7, "fc": 1, "tr": 7, "tc": 4})
+        room = state_where(ws, lambda r: r["moves"] >= 1)
+        assert room["moves"] >= 1
+
+
+def test_xiangqi_rejects_pvp_mode(client):
+    with client.websocket_connect("/ws", headers=account(client, "xq_pvp")) as ws:
+        ws.send_json({"type": "create", "game": "xiangqi", "mode": "pvp"})
+        err = receive_until(ws, lambda m: m["type"] == "error")["message"]
+        assert "đấu với máy" in err
+
+
+def test_xiangqi_bot_survives_reset_while_thinking():
+    """Ván mới / hoàn tác trong lúc bot đang nghĩ (bot cầm Đỏ, đi trước): không treo."""
+    from xiangqi_game import BLACK
+    from server.xiangqi_room import XiangqiRoom
+    from server.xiangqi_bot import XiangqiBotDriver
+
+    async def scenario():
+        room = XiangqiRoom("XQ", "bot", level=0, human_side=BLACK)
+        room.take_seat("An", "an", prefer=BLACK)
+        driver = XiangqiBotDriver(room, asyncio.get_running_loop(), lambda: None)
+        try:
+            for _ in range(4):
+                driver.sync()
+                room.restart(BLACK)
+                driver.reset()
+                stop = time.monotonic() + 10
+                while not room.history:
+                    assert time.monotonic() < stop, "bot cờ tướng bị treo"
+                    await asyncio.sleep(0.02)
+                assert len(room.history) == 1
+        finally:
+            driver.close()
+
+    asyncio.run(scenario())
+
+
+def test_xiangqi_checkmate_results_in_win(client):
+    from xiangqi_game import XiangqiBoard
+    with client.websocket_connect("/ws", headers=account(client, "xq_mate")) as ws:
+        ws.send_json({"type": "create", "game": "xiangqi", "mode": "bot", "level": 0, "side": 1})
+        code = receive_until(ws, lambda m: m["type"] == "joined")["room"]
+        room = hub.rooms[code]
+        # Dựng thế sắp chiếu bí: Xe Đỏ ở (9, 0), đi (0, 0) chiếu bí
+        room.engine = XiangqiBoard("3ka4/3r5/9/9/9/9/9/9/9/R4K3 w")
+        room.board = [row[:] for row in room.engine.board]
+
+        ws.send_json({"type": "move_piece", "fr": 9, "fc": 0, "tr": 0, "tc": 0})
+        st = state_where(ws, lambda r: r["winner"] != 0)
+        assert st["winner"] == 1
+        assert "chiếu bí" in st["notice"] and "Đỏ thắng" in st["notice"]
+
+
+def test_xiangqi_room_list_includes_game(client):
+    with client.websocket_connect("/ws", headers=account(client, "xq_list")) as ws:
+        ws.send_json({"type": "create", "game": "xiangqi", "mode": "bot", "level": 0, "side": 1})
+        code = receive_until(ws, lambda m: m["type"] == "joined")["room"]
+        res = client.get("/api/rooms", headers=account(client, "xq_viewer"))
+        assert res.status_code == 200
+        rooms = res.json()
+        xq_rooms = [r for r in rooms if r["code"] == code]
+        assert len(xq_rooms) == 1
+        assert xq_rooms[0]["game"] == "xiangqi"
+
