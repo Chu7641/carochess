@@ -240,6 +240,7 @@ class Room:
         last = self.history[-1] if self.history else None
         return {
             "code": self.code,
+            "game": "caro",  # giao diện chọn màn hình theo trường này (xem GoRoom)
             "mode": self.mode,
             "rows": self.rows,
             "cols": self.cols,

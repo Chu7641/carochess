@@ -98,7 +98,12 @@ function handle(msg) {
     setRoomInUrl(msg.room)
   } else if (msg.type === 'state') {
     msg.room.receivedAt = Date.now()  // turnLeft tính từ lúc nhận, đồng hồ máy chủ có thể lệch
-    if (msg.room.code === state.code) state.room = msg.room
+    if (msg.room.code === state.code) {
+      state.room = msg.room
+      if (msg.room.game && state.game !== msg.room.game) {
+        chooseGame(msg.room.game)
+      }
+    }
     const elo = msg.room.players[msg.room.you]?.elo  // elo mới sau mỗi ván
     if (elo != null && state.user) state.user.elo = elo
   } else if (msg.type === 'error') {
@@ -154,5 +159,6 @@ export function leaveRoom() {
 export const move = (r, c) => send({ type: 'move', r, c })
 export const undo = () => send({ type: 'undo' })
 export const restart = () => send({ type: 'restart' })
+export const passTurn = () => send({ type: 'pass' })
 export const respond = (accept) => send({ type: 'respond', accept })
 export const toggleReady = () => send({ type: 'ready' })

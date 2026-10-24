@@ -6,7 +6,10 @@ Project có kèm bản desktop (pygame) dùng chung engine.
 
 - **Tài khoản:** đăng ký/đăng nhập, lưu trong SQLite (`data/caro.db`). Tài khoản mới phải
   được admin phê duyệt mới đăng nhập được. Bấm vào tên mình trên thanh tiêu đề để đổi mật khẩu.
-  Đăng nhập xong thì chọn trò chơi (hiện có cờ caro).
+  Đăng nhập xong thì chọn trò chơi: cờ caro hoặc cờ vây.
+- **Cờ vây:** bàn 9×9, 13×13, 19×19, có bắt quân, cấm tự sát, luật Kiếp, bỏ lượt và
+  đếm điểm diện tích kèm komi (chưa tự loại quân chết: hãy bắt hết trước khi cùng bỏ lượt).
+  Đấu người dùng chung sẵn sàng, đồng hồ, elo; đấu máy có 3 mức (bot Monte Carlo, mạnh nhất ở 9×9).
 - **Quản trị:** tài khoản admin khai báo trong `.env`. Trang Quản trị: duyệt/từ chối đăng ký,
   xem người dùng, nâng lên admin, đặt lại mật khẩu (sinh ngẫu nhiên), reset elo, xóa tài khoản.
 - **Đấu máy:** 3 mức độ khó (Nhanh 2 giây, Mạnh 5 giây, Chuyên gia 12 giây mỗi nước).
@@ -109,6 +112,7 @@ Vite chuyển tiếp `/api` và `/ws` sang cổng 8000. Sửa giao diện xong, 
 .venv\Scripts\python.exe -m pip install -r requirements-dev.txt
 
 .venv\Scripts\python.exe caro_game.py --self-test   # engine: luật, VCF/VCT, make/unmake
+.venv\Scripts\python.exe go_game.py --self-test     # cờ vây: luật, đếm điểm, bot
 .venv\Scripts\python.exe -m pytest server           # máy chủ: phòng, WebSocket, bot
 ```
 
@@ -116,16 +120,20 @@ Vite chuyển tiếp `/api` và `/ws` sang cổng 8000. Sửa giao diện xong, 
 
 ```
 caro_game.py          Engine (luật, bot) + game desktop pygame
+go_game.py            Engine cờ vây: luật, đếm điểm, bot Monte Carlo
+GEMINI.md             Quy tắc cho agent viết code (Gemini/Antigravity CLI)
 server/
   app.py              FastAPI: đăng nhập, WebSocket /ws, /api/rooms, phục vụ web/dist
   auth.py             Tài khoản + phiên đăng nhập (SQLite, mật khẩu băm scrypt), đọc .env
   game.py             Phòng chơi: ghế, luật, hoàn tác, đổi bên
   bot.py              Chạy bot ở luồng nền cho mỗi phòng, có nghĩ trước
+  go_room.py, go_bot.py  Phòng chơi và bot nền cho cờ vây
   tests/              Kiểm thử máy chủ (pytest)
 web/
   src/game.js         Tài khoản, kết nối WebSocket, trạng thái, tự kết nối lại
   src/components/     LoginView, GamesView (chọn trò), LobbyView (sảnh), GameView (ván cờ),
-                      CaroBoard (bàn cờ SVG), AdminView (quản trị)
+                      CaroBoard (bàn cờ SVG), AdminView (quản trị),
+                      GoLobbyView / GoGameView / GoBoard (cờ vây)
 .claude/skills/       Hướng dẫn cho Claude Code khi làm việc với project
 ```
 

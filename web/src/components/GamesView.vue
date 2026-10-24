@@ -4,6 +4,7 @@ import { chooseGame } from '../game.js'
 // Thêm trò mới: thêm một dòng ở đây và một nhánh hiển thị trong App.vue.
 const GAMES = [
   { id: 'caro', name: 'Cờ caro', icon: '⚫🔴', desc: '5 quân liên tiếp là thắng. Đấu với máy hoặc với bạn trong mạng LAN.' },
+  { id: 'go', name: 'Cờ vây', icon: '⚪⚫', desc: 'Vây bắt quân và chiếm đất. Hỗ trợ bàn 9×9, 13×13, 19×19 qua LAN hoặc đấu với máy.' },
 ]
 </script>
 

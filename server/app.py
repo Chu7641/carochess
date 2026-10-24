@@ -35,10 +35,13 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from caro_game import EMPTY, LEVELS, O, X
+from go_game import BLACK, GO_LEVELS, GO_SIZES, WHITE
 
 from . import auth
 from .bot import BotDriver
 from .game import MAX_SIZE, MIN_SIZE, GameError, Room, new_code
+from .go_bot import GoBotDriver
+from .go_room import GoRoom
 
 log = logging.getLogger("caro.server")
 
@@ -63,6 +66,18 @@ class Hub:
     def create(self, client, msg):
         loop = asyncio.get_running_loop()
         code = new_code(self.rooms)
+        game_type = msg.get("game", "caro")
+        if game_type == "go":
+            room = GoRoom(code, msg.get("mode"),
+                          size=msg.get("size", msg.get("rows", 19)),
+                          komi=msg.get("komi"),
+                          level=msg.get("level", 1),
+                          human_side=msg.get("side", BLACK))
+            self.rooms[code] = room
+            self.clients[code] = set()
+            if room.mode == "bot":
+                self.bots[code] = GoBotDriver(room, loop, lambda: self.publish(code))
+            return self.join(client, room, prefer=msg.get("side", BLACK))
         room = Room(code, msg.get("mode"), msg.get("rows", 15), msg.get("cols", 15),
                     msg.get("strict", False), msg.get("level", 1), msg.get("side", X))
         self.rooms[code] = room
@@ -167,8 +182,10 @@ class Hub:
             if not self.clients.get(room.code):
                 continue  # phòng trống, sắp bị xóa
             status = "bot" if room.mode == "bot" else "waiting" if room.waiting else "playing"
-            result.append({"code": room.code, "status": status, "rows": room.rows,
-                           "cols": room.cols, "strict": room.strict, "moves": len(room.history),
+            result.append({"code": room.code, "game": getattr(room, "game_type", "caro"),
+                           "status": status, "rows": room.rows,
+                           "cols": room.cols, "strict": getattr(room, "strict", False),
+                           "moves": len(room.history),
                            "players": [s.name for s in room.seats.values() if s is not None],
                            "viewers": len(self.clients[room.code])})
         # Phòng đang chờ lên đầu để vào nhanh.
@@ -328,6 +345,9 @@ def info():
         "lan": lan_addresses(),
         "levels": [{"id": i, "name": name, "seconds": seconds}
                    for i, (name, seconds, _depth, _limit) in enumerate(LEVELS)],
+        "goLevels": [{"id": i, "name": name, "seconds": seconds}
+                     for i, (name, seconds) in enumerate(GO_LEVELS)],
+        "goSizes": list(GO_SIZES),
         "minSize": MIN_SIZE,
         "maxSize": MAX_SIZE,
     }
@@ -388,6 +408,12 @@ async def handle(client, msg):
     if kind == "move":
         room.place(side, msg.get("r"), msg.get("c"))
         hub.changed(room)
+    elif kind == "pass":
+        if hasattr(room, "pass_turn"):
+            room.pass_turn(side)
+            hub.changed(room)
+        else:
+            raise GameError("Trò chơi này không có tính năng bỏ lượt.")
     elif kind == "undo":
         room.undo(side)
         hub.changed(room, reset_bot=True)

@@ -5,16 +5,22 @@ import LoginView from './components/LoginView.vue'
 import GamesView from './components/GamesView.vue'
 import LobbyView from './components/LobbyView.vue'
 import GameView from './components/GameView.vue'
+import GoLobbyView from './components/GoLobbyView.vue'
+import GoGameView from './components/GoGameView.vue'
 import AdminView from './components/AdminView.vue'
 import PasswordView from './components/PasswordView.vue'
 
-const TITLES = { caro: 'CỜ CARO · GOMOKU', admin: 'QUẢN TRỊ', password: 'TÀI KHOẢN' }
+const TITLES = {
+  caro: 'CỜ CARO · GOMOKU',
+  go: 'CỜ VÂY · GO / BADUK',
+  admin: 'QUẢN TRỊ',
+  password: 'TÀI KHOẢN',
+}
 
 // Link mời dạng /?room=ABCD: vào thẳng phòng đó ngay khi đăng nhập xong.
 const invite = new URLSearchParams(location.search).get('room')
 watch(() => state.user, (user) => {
   if (user && invite && !state.code) {
-    chooseGame('caro')
     joinRoom(invite)
   }
 })
@@ -48,6 +54,11 @@ onMounted(checkSession)
       <GameView v-if="state.code && state.room" />
       <div v-else-if="state.code" class="loading muted">Đang vào phòng {{ state.code }}…</div>
       <LobbyView v-else />
+    </template>
+    <template v-else-if="state.game === 'go'">
+      <GoGameView v-if="state.code && state.room" />
+      <div v-else-if="state.code" class="loading muted">Đang vào phòng cờ vây {{ state.code }}…</div>
+      <GoLobbyView v-else />
     </template>
     <AdminView v-else-if="state.game === 'admin' && state.user.isAdmin" />
     <PasswordView v-else-if="state.game === 'password'" />
