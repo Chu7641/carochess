@@ -21,7 +21,7 @@ from xiangqi_game import (
 
 
 class XiangqiRoom(Room):
-    """Phòng chơi cờ tướng (Xiangqi), hiện hỗ trợ đấu với máy."""
+    """Phòng chơi cờ tướng (Xiangqi), hỗ trợ đấu với máy và đấu người (pvp) qua mạng LAN."""
 
     game_type = "xiangqi"
 
@@ -32,8 +32,8 @@ class XiangqiRoom(Room):
         level: int = 1,
         human_side: int = RED,
     ):
-        if mode != "bot":
-            raise GameError("Cờ tướng hiện chỉ có chế độ đấu với máy.")
+        if mode not in ("pvp", "bot"):
+            raise GameError("Chế độ chơi không hợp lệ.")
         try:
             level = int(level)
             human_side = int(human_side)
@@ -52,7 +52,7 @@ class XiangqiRoom(Room):
         self.strict = False
         self.level = level
         self.seats: dict[int, Seat | None] = {RED: None, BLACK: None}
-        self.bot_side = 3 - human_side if mode == "bot" else None
+        self.bot_side = (3 - human_side) if mode == "bot" else None
         if self.bot_side:
             self.seats[self.bot_side] = Seat(f"Bot Cờ Tướng · {XIANGQI_LEVELS[level][0]}", None)
 
@@ -75,13 +75,15 @@ class XiangqiRoom(Room):
         self.win_line = []
         self.request = None
         self.ready = set()
-        self.started = self.mode == "bot"
+        self.started = (self.mode == "bot")
         self.rated = False
         self.stats_nodes = 0
         self.stats_elapsed = 0.0
         self.stats_depth = 0
         self.stats_score = 0
         self.notice = ""
+        self._clock_key = None
+        self.turn_deadline = None
         for seat in self.seats.values():
             if seat is not None:
                 seat.elo_delta = None
@@ -119,12 +121,15 @@ class XiangqiRoom(Room):
         if res["over"]:
             if res["winner"] is not None:
                 self.winner = res["winner"]
-                win_name = "Đỏ" if self.winner == RED else "Đen"
+                winner_seat = self.seats.get(self.winner)
+                winner_name = winner_seat.name if winner_seat else ("Đỏ" if self.winner == RED else "Đen")
                 if res["reason"] == "chiếu bí":
-                    self.notice = f"{win_name} chiếu bí, {win_name} thắng!"
+                    self.notice = f"{winner_name} chiếu bí, {winner_name} thắng!"
                 else:
-                    lose_name = "Đen" if self.winner == RED else "Đỏ"
-                    self.notice = f"{lose_name} hết nước đi, {win_name} thắng!"
+                    loser = 3 - self.winner
+                    loser_seat = self.seats.get(loser)
+                    loser_name = loser_seat.name if loser_seat else ("Đen" if self.winner == RED else "Đỏ")
+                    self.notice = f"{loser_name} hết nước đi, {winner_name} thắng!"
             else:
                 self.winner = -1
                 self.notice = "Lặp lại thế cờ 3 lần, hòa."
@@ -182,7 +187,7 @@ class XiangqiRoom(Room):
         last = self.history[-1] if self.history else None
         last_move = [last[0], last[1], last[2], last[3]] if last else None
         you_side = self.side_of(token)
-        is_human_turn = (self.winner == 0 and you_side == self.current and self.started)
+        is_human_turn = (self.winner == 0 and you_side == self.current and self.started and not self.waiting)
 
         return {
             "code": self.code,
@@ -198,7 +203,7 @@ class XiangqiRoom(Room):
             "current": self.current,
             "winner": self.winner,
             "winLine": [],
-            "inCheck": self.engine.in_check(self.current) if self.winner == 0 else False,
+            "inCheck": self.engine.in_check(self.current) if (self.winner == 0 and self.started) else False,
             "legalMoves": self.engine.legal_moves() if is_human_turn else [],
             "players": {str(RED): seat(RED), str(BLACK): seat(BLACK)},
             "you": you_side,
@@ -221,4 +226,3 @@ class XiangqiRoom(Room):
                 else round(max(0.0, self.turn_deadline - time.monotonic()), 2)
             ),
         }
-

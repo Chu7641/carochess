@@ -45,7 +45,7 @@ const PIECE_TEXT = {
 const isRedPiece = (p) => p && p !== '.' && p === p.toUpperCase()
 const isBlackPiece = (p) => p && p !== '.' && p === p.toLowerCase()
 const isMyPiece = (p) => {
-  if (!p || p === '.') return false
+  if (!p || p === '.' || !props.room.you) return false
   return props.room.you === 1 ? isRedPiece(p) : isBlackPiece(p)
 }
 
@@ -98,8 +98,15 @@ const checkedKingPos = computed(() => {
   return null
 })
 
+function cornerBracketPath(cx, cy, d = 24, len = 7) {
+  return `M ${cx - d} ${cy - d + len} L ${cx - d} ${cy - d} L ${cx - d + len} ${cy - d} ` +
+         `M ${cx + d - len} ${cy - d} L ${cx + d} ${cy - d} L ${cx + d} ${cy - d + len} ` +
+         `M ${cx - d} ${cy + d - len} L ${cx - d} ${cy + d} L ${cx - d + len} ${cy + d} ` +
+         `M ${cx + d - len} ${cy + d} L ${cx + d} ${cy + d} L ${cx + d} ${cy + d - len}`
+}
+
 function handleCellClick(r, c) {
-  if (!props.canPlay) return
+  if (!props.canPlay || !props.room.you) return
 
   const p = props.room.board?.[r]?.[c]
 
@@ -137,11 +144,23 @@ function onSvgClick(event) {
 </script>
 
 <template>
-  <div class="board-container">
-    <svg :viewBox="`0 0 ${WIDTH} ${HEIGHT}`" class="xiangqi-svg" @click="onSvgClick">
-      <!-- Nền bàn cờ màu gỗ ấm -->
-      <rect x="10" y="10" :width="WIDTH - 20" :height="HEIGHT - 20" rx="8" class="board-bg" />
-      <rect :x="PAD - 6" :y="PAD - 6" :width="8 * CELL + 12" :height="9 * CELL + 12" class="board-border" />
+  <div class="wrap">
+    <svg class="board" :viewBox="`0 0 ${WIDTH} ${HEIGHT}`" :class="{ playable: canPlay }"
+         role="grid" aria-label="Bàn cờ tướng" @click="onSvgClick">
+      <defs>
+        <filter id="piece-shadow" x="-30%" y="-30%" width="160%" height="160%">
+          <feDropShadow dx="1.5" dy="2.5" stdDeviation="2" flood-color="#000" flood-opacity="0.32" />
+        </filter>
+        <filter id="selected-piece-shadow" x="-40%" y="-40%" width="180%" height="180%">
+          <feDropShadow dx="2" dy="5" stdDeviation="4" flood-color="#000" flood-opacity="0.45" />
+        </filter>
+      </defs>
+
+      <!-- Nền gỗ bàn cờ -->
+      <rect x="0" y="0" :width="WIDTH" :height="HEIGHT" rx="12" class="wood" />
+
+      <!-- Viền khung ngoài -->
+      <rect :x="PAD - 6" :y="PAD - 6" :width="8 * CELL + 12" :height="9 * CELL + 12" class="outer-border" />
 
       <!-- Các đường ngang (10 hàng) -->
       <line v-for="r in 10" :key="`h-${r}`"
@@ -162,52 +181,59 @@ function onSvgClick(event) {
               class="grid-line" />
       </template>
 
-      <!-- Hai cung cửu cung (đường chéo) -->
-      <!-- Cung trên -->
+      <!-- Hai cửu cung (đường chéo) -->
       <line :x1="PAD + 3 * CELL" :y1="PAD" :x2="PAD + 5 * CELL" :y2="PAD + 2 * CELL" class="grid-line" />
       <line :x1="PAD + 5 * CELL" :y1="PAD" :x2="PAD + 3 * CELL" :y2="PAD + 2 * CELL" class="grid-line" />
-      <!-- Cung dưới -->
       <line :x1="PAD + 3 * CELL" :y1="PAD + 7 * CELL" :x2="PAD + 5 * CELL" :y2="PAD + 9 * CELL" class="grid-line" />
       <line :x1="PAD + 5 * CELL" :y1="PAD + 7 * CELL" :x2="PAD + 3 * CELL" :y2="PAD + 9 * CELL" class="grid-line" />
 
       <!-- Chữ trên Sông Sở Hà - Hán Giới -->
       <g class="river-text">
-        <text :x="PAD + 2 * CELL" :y="PAD + 4.65 * CELL" text-anchor="middle">
+        <text :x="PAD + 2 * CELL" :y="PAD + 4.6 * CELL" text-anchor="middle">
           {{ isFlipped ? 'HÁN GIỚI' : 'SỞ HÀ' }}
         </text>
-        <text :x="PAD + 6 * CELL" :y="PAD + 4.65 * CELL" text-anchor="middle">
+        <text :x="PAD + 6 * CELL" :y="PAD + 4.6 * CELL" text-anchor="middle">
           {{ isFlipped ? 'SỞ HÀ' : 'HÁN GIỚI' }}
         </text>
       </g>
 
-      <!-- Đánh dấu nước vừa đi (ô đi và ô đến) -->
+      <!-- Đánh dấu nước vừa đi (ô đi và ô đến) bằng góc 4 phía và nền nhẹ -->
       <template v-if="room.lastMove">
         <rect :x="toX(room.lastMove[1]) - CELL / 2" :y="toY(room.lastMove[0]) - CELL / 2"
-              :width="CELL" :height="CELL" class="last-move-marker" />
+              :width="CELL" :height="CELL" rx="4" class="last-move-bg" />
+        <path :d="cornerBracketPath(toX(room.lastMove[1]), toY(room.lastMove[0]))" class="last-move-bracket" />
+
         <rect :x="toX(room.lastMove[3]) - CELL / 2" :y="toY(room.lastMove[2]) - CELL / 2"
-              :width="CELL" :height="CELL" class="last-move-marker" />
+              :width="CELL" :height="CELL" rx="4" class="last-move-bg" />
+        <path :d="cornerBracketPath(toX(room.lastMove[3]), toY(room.lastMove[2]))" class="last-move-bracket" />
       </template>
 
-      <!-- Tô sáng quân đang được chọn -->
+      <!-- Viền sáng xoay quanh quân đang được chọn -->
       <circle v-if="selected"
               :cx="toX(selected.c)" :cy="toY(selected.r)"
-              :r="PIECE_R + 3" class="selected-glow" />
+              :r="PIECE_R + 5" class="selected-glow" />
 
       <!-- Vòng tròn đỏ báo hiệu Tướng bị chiếu -->
       <circle v-if="checkedKingPos"
               :cx="toX(checkedKingPos.c)" :cy="toY(checkedKingPos.r)"
-              :r="PIECE_R + 4" class="check-ring" />
+              :r="PIECE_R + 5" class="check-ring" />
 
       <!-- Các quân cờ trên bàn -->
       <g v-for="p in pieces" :key="`p-${p.r}-${p.c}`"
          class="piece-group"
-         :class="{ red: p.red, black: !p.red, mine: isMyPiece(p.char) }"
+         :class="{
+           red: p.red,
+           black: !p.red,
+           selected: selected && selected.r === p.r && selected.c === p.c,
+           mine: isMyPiece(p.char),
+         }"
          @click.stop="handleCellClick(p.r, p.c)">
-        <!-- Đĩa quân -->
-        <circle :cx="toX(p.c)" :cy="toY(p.r)" :r="PIECE_R" class="piece-body" />
-        <circle :cx="toX(p.c)" :cy="toY(p.r)" :r="PIECE_R - 3" class="piece-inner-ring" />
+        <!-- Đĩa quân ngoài -->
+        <circle :cx="toX(p.c)" :cy="toY(p.r)" :r="PIECE_R" class="piece-outer" />
+        <!-- Vòng chỉ trong -->
+        <circle :cx="toX(p.c)" :cy="toY(p.r)" :r="PIECE_R - 3.5" class="piece-inner" />
         <!-- Chữ Hán -->
-        <text :x="toX(p.c)" :y="toY(p.r) + 7" text-anchor="middle" class="piece-label">
+        <text :x="toX(p.c)" :y="toY(p.r)" class="piece-label">
           {{ p.text }}
         </text>
       </g>
@@ -218,129 +244,143 @@ function onSvgClick(event) {
          @click.stop="handleCellClick(t.r, t.c)">
         <!-- Ô ăn quân: vòng tròn bao quanh quân đối phương -->
         <circle v-if="t.isCapture"
-                :cx="toX(t.c)" :cy="toY(t.r)" :r="PIECE_R + 2" class="target-capture-ring" />
+                :cx="toX(t.c)" :cy="toY(t.r)" :r="PIECE_R + 2.5" class="target-capture-ring" />
         <!-- Ô trống: chấm tròn nhỏ -->
         <circle v-else
-                :cx="toX(t.c)" :cy="toY(t.r)" :r="6" class="target-dot" />
+                :cx="toX(t.c)" :cy="toY(t.r)" :r="5.5" class="target-dot" />
       </g>
     </svg>
   </div>
 </template>
 
 <style scoped>
-.board-container {
-  display: flex;
-  justify-content: center;
-  align-items: center;
+.wrap {
   width: 100%;
-  max-width: 540px;
-  margin: 0 auto;
+  display: grid;
+  place-items: center;
 }
-.xiangqi-svg {
+.board {
+  display: block;
+  user-select: none;
   width: 100%;
   height: auto;
-  max-height: 82vh;
-  user-select: none;
-  filter: drop-shadow(0 4px 14px rgba(0, 0, 0, 0.25));
+  max-height: calc(100vh - 110px);
+  aspect-ratio: 528 / 584;
+  border-radius: var(--radius);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.15);
+  margin-inline: auto;
 }
-.board-bg {
-  fill: #eacb97;
-  stroke: #8d5d2a;
-  stroke-width: 3;
+.wood {
+  fill: var(--board);
 }
-.board-border {
+.outer-border {
   fill: none;
-  stroke: #5c3514;
+  stroke: var(--board-line);
   stroke-width: 2.5;
 }
 .grid-line {
-  stroke: #6a3e18;
-  stroke-width: 1.5;
+  stroke: var(--board-line);
+  stroke-width: 1.2;
 }
 .river-text text {
-  font-family: "KaiTi", "Baskerville", "STKaiti", "SimSun", "Noto Serif SC", serif;
+  font-family: "KaiTi", "STKaiti", "SimSun", "Noto Serif SC", serif;
   font-size: 20px;
   font-weight: 700;
-  fill: #7d491f;
+  fill: var(--board-line);
+  opacity: 0.65;
   letter-spacing: 6px;
+  dominant-baseline: central;
 }
-.last-move-marker {
-  fill: rgba(230, 160, 20, 0.35);
-  stroke: #d97706;
-  stroke-width: 2;
-  rx: 4;
+.last-move-bg {
+  fill: var(--accent);
+  opacity: 0.22;
+}
+.last-move-bracket {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 2.5;
 }
 .selected-glow {
   fill: none;
-  stroke: #2563eb;
-  stroke-width: 4;
-  stroke-dasharray: 4 2;
-  animation: rotate 6s linear infinite;
+  stroke: var(--accent);
+  stroke-width: 3;
+  stroke-dasharray: 6 3;
+  animation: rotate-dash 6s linear infinite;
 }
-@keyframes rotate {
-  100% { stroke-dashoffset: 40; }
+@keyframes rotate-dash {
+  100% { stroke-dashoffset: 36; }
 }
 .check-ring {
   fill: none;
-  stroke: #dc2626;
-  stroke-width: 4;
-  animation: pulse 1s infinite alternate ease-in-out;
+  stroke: var(--red);
+  stroke-width: 3.5;
+  animation: check-pulse 1s infinite alternate ease-in-out;
 }
-@keyframes pulse {
-  0% { transform: scale(0.96); opacity: 0.8; }
-  100% { transform: scale(1.04); opacity: 1; }
+@keyframes check-pulse {
+  0% { opacity: 0.35; stroke-width: 2.5; }
+  100% { opacity: 1; stroke-width: 4.5; }
 }
 .piece-group {
+  cursor: default;
+}
+.piece-group.mine,
+.playable .piece-group {
   cursor: pointer;
-  transition: transform 0.1s ease;
 }
-.piece-group:hover .piece-body {
-  filter: brightness(1.06);
+.piece-outer {
+  fill: #fdf6e7;
+  stroke: #d8c8af;
+  stroke-width: 1.5;
+  filter: url(#piece-shadow);
+  transition: stroke 0.15s, stroke-width 0.15s;
 }
-.piece-body {
-  fill: #fff5e0;
-  stroke: #73451c;
-  stroke-width: 2;
-}
-.piece-inner-ring {
+.piece-inner {
   fill: none;
   stroke-width: 1.2;
 }
 .piece-label {
   font-family: "KaiTi", "STKaiti", "SimSun", "Noto Serif SC", serif;
-  font-size: 25px;
+  font-size: 24px;
   font-weight: 900;
+  text-anchor: middle;
+  dominant-baseline: central;
 }
 
 /* Đỏ */
-.piece-group.red .piece-inner-ring { stroke: #c82323; }
+.piece-group.red .piece-inner { stroke: #c82323; }
 .piece-group.red .piece-label { fill: #c82323; }
 
 /* Đen */
-.piece-group.black .piece-inner-ring { stroke: #1e293b; }
-.piece-group.black .piece-label { fill: #1e293b; }
+.piece-group.black .piece-inner { stroke: #2b2a27; }
+.piece-group.black .piece-label { fill: #2b2a27; }
 
-/* Điểm đích */
+/* Quân đang chọn */
+.piece-group.selected .piece-outer {
+  stroke: var(--accent);
+  stroke-width: 2.5;
+  filter: url(#selected-piece-shadow);
+}
+
+/* Điểm đến hợp lệ */
 .target-mark {
   cursor: pointer;
 }
 .target-dot {
-  fill: #2563eb;
+  fill: var(--blue);
   opacity: 0.85;
-  transition: r 0.15s;
+  transition: r 0.15s ease;
 }
 .target-mark:hover .target-dot {
-  r: 9;
-  fill: #1d4ed8;
+  r: 8;
+  fill: var(--accent);
 }
 .target-capture-ring {
-  fill: rgba(220, 38, 38, 0.25);
-  stroke: #dc2626;
-  stroke-width: 3.5;
+  fill: rgba(184, 72, 62, 0.2);
+  stroke: var(--red);
+  stroke-width: 3;
   stroke-dasharray: 6 3;
 }
 .target-mark:hover .target-capture-ring {
-  fill: rgba(220, 38, 38, 0.45);
+  fill: rgba(184, 72, 62, 0.4);
 }
 </style>
-

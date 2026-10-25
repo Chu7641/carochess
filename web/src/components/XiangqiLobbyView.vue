@@ -11,6 +11,7 @@ const hint = (room) => mine(room) ? 'Vào lại →' : room.status === 'waiting'
 const joinCode = ref('')
 
 const bot = reactive({ level: 1, side: 1 })
+const pvp = reactive({ side: 1 })
 
 let timer = null
 
@@ -42,15 +43,23 @@ function startBot() {
     side: bot.side,
   })
 }
+
+function startPvp() {
+  createRoom({
+    game: 'xiangqi',
+    mode: 'pvp',
+    side: pvp.side,
+  })
+}
 </script>
 
 <template>
   <section class="lobby">
     <!-- Cột chơi với máy -->
     <div class="card">
-      <h2>🤖 Chơi cờ tướng với máy</h2>
+      <h2>🤖 Chơi với máy</h2>
       <div class="field">
-        <span>Độ khó của Bot</span>
+        <span>Độ khó</span>
         <div class="segmented">
           <button v-for="level in info.xiangqiLevels?.length ? info.xiangqiLevels : [
                     { id: 0, name: 'Dễ' },
@@ -58,7 +67,7 @@ function startBot() {
                     { id: 2, name: 'Khó' }
                   ]" :key="level.id"
                   :class="{ active: bot.level === level.id }" @click="bot.level = level.id">
-            {{ level.name }}
+            {{ level.name }} <small v-if="level.seconds" class="muted-on">· {{ level.seconds }}s</small>
           </button>
         </div>
       </div>
@@ -66,38 +75,56 @@ function startBot() {
         <span>Bạn cầm quân</span>
         <div class="segmented">
           <button :class="{ active: bot.side === 1 }" @click="bot.side = 1">🔴 Đỏ · đi trước</button>
-          <button :class="{ active: bot.side === 2 }" @click="bot.side = 2">⚫ Đen · đi sau</button>
+          <button :class="{ active: bot.side === 2 }" @click="bot.side = 2">⚫ Đen · máy đi trước</button>
         </div>
       </div>
       <button class="btn green block" :disabled="!state.connected" @click="startBot">
-        Bắt đầu ván cờ tướng với máy
+        Bắt đầu ván với máy
       </button>
     </div>
 
-    <!-- Cột danh sách phòng / vào bằng mã -->
+    <!-- Cột chơi người với người qua LAN -->
     <div class="card">
-      <h2>Vào phòng bằng mã</h2>
-      <div class="join-row">
-        <input v-model="joinCode" class="input uppercase" maxlength="6"
-               placeholder="Mã phòng (VD: ABCD)" @keyup.enter="joinRoom(joinCode)">
-        <button class="btn green" :disabled="!joinCode || !state.connected"
-                @click="joinRoom(joinCode)">Vào</button>
-      </div>
-
-      <div class="list-head">
-        <h3>Phòng đang hoạt động</h3>
-        <span class="muted small">{{ rooms.length }} phòng</span>
-      </div>
-      <div v-if="!rooms.length" class="empty muted">Chưa có phòng cờ tướng nào. Hãy tạo ván đấu máy ở bên cạnh!</div>
-      <div v-else class="room-list">
-        <div v-for="room in rooms" :key="room.code" class="room-item" @click="joinRoom(room.code)">
-          <div class="code"><strong>{{ room.code }}</strong></div>
-          <div class="info">
-            <div>{{ room.players.join(' vs ') || 'Chưa có người' }}</div>
-            <div class="small muted">{{ STATUS[room.status] ?? room.status }} · {{ room.moves }} nước · {{ room.viewers }} người xem</div>
-          </div>
-          <button class="btn small">{{ hint(room) }}</button>
+      <h2>👥 Chơi với người (mạng LAN)</h2>
+      <div class="field">
+        <span>Bên bạn chọn cầm</span>
+        <div class="segmented">
+          <button :class="{ active: pvp.side === 1 }" @click="pvp.side = 1">🔴 Đỏ · đi trước</button>
+          <button :class="{ active: pvp.side === 2 }" @click="pvp.side = 2">⚫ Đen · đi sau</button>
         </div>
+      </div>
+      <button class="btn blue block" :disabled="!state.connected" @click="startPvp">
+        Tạo phòng mới
+      </button>
+
+      <div class="field join">
+        <span>Hoặc nhập mã phòng</span>
+        <form class="row" @submit.prevent="joinRoom(joinCode)">
+          <input v-model="joinCode" class="input code" maxlength="4" placeholder="ABCD" />
+          <button class="btn green" :disabled="!state.connected || !joinCode.trim()">Vào phòng</button>
+        </form>
+      </div>
+    </div>
+
+    <!-- Danh sách phòng cờ tướng đang có -->
+    <div class="card rooms-card">
+      <h2>Các phòng <span class="small muted">· tự cập nhật</span></h2>
+      <p v-if="!rooms.length" class="small muted">Chưa có phòng nào. Hãy tạo phòng và gửi mã cho bạn bè.</p>
+      <div class="rooms">
+        <button v-for="room in rooms" :key="room.code" class="room" :class="room.status"
+                @click="joinRoom(room.code)">
+          <div class="room-head">
+            <strong>{{ room.code }}</strong>
+            <span class="status">{{ STATUS[room.status] }}</span>
+          </div>
+          <div class="players">
+            {{ room.players.join(' vs ') }}<template v-if="room.status === 'waiting'"> · chờ đối thủ</template>
+          </div>
+          <div class="small muted">
+            Bàn 10×9 · {{ room.moves }} nước
+          </div>
+          <span class="join-hint">{{ hint(room) }}</span>
+        </button>
       </div>
     </div>
   </section>
@@ -106,56 +133,42 @@ function startBot() {
 <style scoped>
 .lobby {
   display: grid;
-  gap: 20px;
-  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 16px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  max-width: 920px;
+  margin: 0 auto;
 }
-.card { display: flex; flex-direction: column; gap: 16px; }
-h2 { margin: 0; font-size: 1.2rem; }
-.field { display: flex; flex-direction: column; gap: 6px; font-size: 0.9rem; }
-.segmented {
-  display: flex;
-  background: var(--bg);
-  padding: 3px;
-  border-radius: 8px;
-  border: 1px solid var(--border);
+.segmented small { opacity: 0.75; }
+.join { margin-top: 18px; }
+.code { text-transform: uppercase; letter-spacing: 0.2em; font-weight: 700; }
+.rooms-card { grid-column: 1 / -1; }
+.rooms { display: grid; gap: 10px; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); }
+.room {
+  display: grid;
   gap: 4px;
-}
-.segmented button {
-  flex: 1;
-  border: 0;
-  background: transparent;
+  padding: 12px;
+  border: 1px solid var(--panel-border);
+  border-left: 4px solid var(--grey);
+  border-radius: 10px;
+  background: var(--panel);
   color: var(--text);
-  padding: 8px 12px;
-  border-radius: 6px;
+  text-align: left;
   cursor: pointer;
-  font-weight: 500;
-  transition: background 0.15s, color 0.15s;
+  transition: transform 0.1s;
 }
-.segmented button.active {
-  background: var(--accent);
-  color: #fff;
+.room:hover { transform: translateY(-2px); border-color: var(--green); }
+.room.waiting { border-left-color: var(--green); }
+.room.playing { border-left-color: var(--red); }
+.room.bot { border-left-color: var(--blue); }
+.room-head { display: flex; justify-content: space-between; align-items: center; }
+.status { font-size: 0.75rem; font-weight: 700; padding: 2px 8px; border-radius: 999px; color: #fff; background: var(--grey); }
+.waiting .status { background: var(--green); }
+.playing .status { background: var(--red); }
+.bot .status { background: var(--blue); }
+.players { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.join-hint { color: var(--green); font-weight: 700; font-size: 0.85rem; }
+.playing .join-hint, .bot .join-hint { color: var(--muted); }
+@media (max-width: 720px) {
+  .lobby { grid-template-columns: 1fr; }
 }
-.block { width: 100%; padding: 12px; font-size: 1rem; margin-top: 8px; }
-.join-row { display: flex; gap: 8px; }
-.join-row input { flex: 1; }
-.uppercase { text-transform: uppercase; }
-.list-head { display: flex; justify-content: space-between; align-items: baseline; margin-top: 8px; }
-.list-head h3 { margin: 0; font-size: 1rem; }
-.empty { padding: 24px 0; text-align: center; font-size: 0.9rem; }
-.room-list { display: flex; flex-direction: column; gap: 8px; max-height: 420px; overflow-y: auto; }
-.room-item {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 10px 12px;
-  border-radius: 8px;
-  background: var(--bg);
-  border: 1px solid var(--border);
-  cursor: pointer;
-  transition: border-color 0.15s;
-}
-.room-item:hover { border-color: var(--accent); }
-.code { font-size: 1.1rem; color: var(--accent); }
-.info { flex: 1; min-width: 0; font-size: 0.9rem; }
 </style>
-

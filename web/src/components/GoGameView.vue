@@ -19,11 +19,12 @@ const isBot = computed(() => room.value.mode === 'bot')
 const playing = computed(() => room.value.winner === 0 && !room.value.waiting && room.value.started)
 const needReady = computed(() =>
   room.value.winner === 0 && !room.value.waiting && !room.value.started)
-const iAmReady = computed(() => room.value.ready?.includes(you.value))
+const iAmReady = computed(() => room.value.ready.includes(you.value))
 const canPlay = computed(() => playing.value && you.value === room.value.current)
 
 const lanIps = ref([])
 const copied = ref(false)
+const thinkingSince = ref(0)
 const now = ref(Date.now())
 let ticker = null
 
@@ -31,11 +32,13 @@ onMounted(async () => {
   ticker = setInterval(() => { now.value = Date.now() }, 200)
   try {
     lanIps.value = (await (await fetch('/api/info')).json()).lan
-  } catch { /* dùng mặc định */ }
+  } catch { /* không có thì dùng địa chỉ hiện tại */ }
 })
 onUnmounted(() => clearInterval(ticker))
 
-watch(() => room.value?.notice, (notice) => { if (notice) showError(notice) })
+watch(() => room.value.botThinking, (on) => { if (on) thinkingSince.value = Date.now() },
+      { immediate: true })
+watch(() => room.value.notice, (notice) => { if (notice) showError(notice) })
 
 const request = computed(() => {
   const r = room.value.request
@@ -51,14 +54,14 @@ const request = computed(() => {
 
 const turnLeft = computed(() => {
   const r = room.value
-  if (!r || r.turnLeft == null) return null
-  return Math.max(0, Math.ceil(r.turnLeft - (now.value - (r.receivedAt || now.value)) / 1000))
+  return r.turnLeft == null ? null
+    : Math.max(0, Math.ceil(r.turnLeft - (now.value - r.receivedAt) / 1000))
 })
 
 function newGame() {
   const r = room.value
   if (!isBot.value && playing.value && r.moves
-      && !confirm('Ván cờ chưa kết thúc. Đầu hàng / mở ván mới sẽ bị tính là bạn thua (trừ Elo). Bạn chắc chắn?')) return
+      && !confirm('Ván chưa xong. Bắt đầu ván mới sẽ tính là bạn thua (trừ elo). Tiếp tục?')) return
   restart()
 }
 
@@ -85,27 +88,38 @@ async function copyLink() {
   setTimeout(() => { copied.value = false }, 1500)
 }
 
-const player = (side) => room.value.players?.[String(side)]
+const player = (side) => room.value.players[String(side)]
 
 const status = computed(() => {
   const r = room.value
-  if (!r) return { text: '', tone: 'muted' }
+  if (r.winner === -1) return { text: 'Ván cờ hòa', tone: 'blue' }
   if (r.winner) {
     const who = player(r.winner)
     const mine = r.winner === you.value
     const name = r.winner === 1 ? 'Đen' : 'Trắng'
     return {
-      text: you.value ? (mine ? 'Bạn thắng! 🎉' : `${who?.name ?? name} thắng!`)
-                      : `${who?.name ?? name} thắng!`,
+      text: you.value ? (mine ? 'Bạn thắng! 🎉' : `${who?.name ?? name} thắng`)
+                      : `${who?.name ?? name} thắng`,
       tone: mine ? 'green' : 'red',
     }
   }
-  if (r.waiting) return { text: 'Đang chờ đối thủ vào phòng…', tone: 'muted' }
-  if (!r.started) return { text: 'Chờ cả hai bên bấm Sẵn sàng…', tone: 'muted' }
-  if (r.botThinking) return { text: 'Bot cờ vây đang tính toán…', tone: 'blue' }
-  if (canPlay.value) return { text: 'Đến lượt bạn đi', tone: 'green' }
+  if (r.waiting) return { text: 'Đang chờ người chơi thứ hai…', tone: 'muted' }
+  if (!r.started) return { text: 'Chờ hai bên bấm Sẵn sàng…', tone: 'muted' }
+  if (r.botThinking) {
+    const seconds = Math.max(0, (now.value - thinkingSince.value) / 1000)
+    return { text: `Máy đang tính… ${seconds.toFixed(1)}s`, tone: 'blue' }
+  }
+  const other = player(r.current)
+  if (other && !other.online) return { text: `${other.name} mất kết nối, đang chờ quay lại…`, tone: 'muted' }
   const currentName = r.current === 1 ? 'Đen' : 'Trắng'
-  return { text: `Lượt của ${player(r.current)?.name ?? currentName}`, tone: 'muted' }
+  if (r.current === you.value) return { text: `Lượt của bạn (${currentName})`, tone: 'green' }
+  return { text: `Lượt ${currentName} · ${other?.name ?? ''}`, tone: 'muted' }
+})
+
+const stats = computed(() => {
+  const s = room.value.stats
+  if (!isBot.value || !s || !s.nodes) return ''
+  return `Đã duyệt ${s.nodes.toLocaleString('vi-VN')} nút · ${s.elapsed}s`
 })
 
 function onPlay(r, c) {
@@ -113,283 +127,177 @@ function onPlay(r, c) {
 }
 
 function onPass() {
-  if (confirm('Bạn có chắc chắn muốn bỏ lượt này không? (Nếu đối thủ cũng bỏ lượt, ván cờ sẽ kết thúc để tính điểm)')) {
+  if (confirm('Bạn có chắc chắn muốn bỏ lượt? (Nếu cả hai bên cùng bỏ lượt, ván cờ sẽ kết thúc để tính điểm)')) {
     passTurn()
   }
 }
 </script>
 
 <template>
-  <div v-if="room" class="game-view">
-    <!-- Thanh thông tin phòng và người chơi -->
-    <header class="room-bar">
-      <div class="room-info">
-        <span class="room-code">Phòng <strong>{{ room.code }}</strong></span>
-        <span class="meta">Bàn cờ vây {{ room.size || room.rows }}×{{ room.size || room.cols }} · Komi: {{ room.komi }}</span>
-        <button v-if="!isBot" class="btn small" :class="{ green: copied }" @click="copyLink">
-          {{ copied ? '✓ Đã chép link mời' : '📋 Chép link mời bạn' }}
+  <section v-if="room" class="game">
+    <div class="board-wrap">
+      <GoBoard :room="room" :can-play="canPlay" :ghost-side="you || 1" @play="onPlay" />
+    </div>
+
+    <aside class="card side">
+      <div class="status" :class="status.tone">{{ status.text }}</div>
+
+      <button v-if="needReady && you" class="btn block" :class="iAmReady ? '' : 'green'"
+              @click="toggleReady">
+        {{ iAmReady ? 'Hủy sẵn sàng (đang chờ đối thủ)' : 'Sẵn sàng' }}
+      </button>
+
+      <div v-if="request" class="request" :class="{ ask: request.canAnswer }" role="status">
+        <span>{{ request.text }}</span>
+        <div v-if="request.canAnswer" class="row">
+          <button class="btn green" @click="respond(true)">Đồng ý</button>
+          <button class="btn red" @click="respond(false)">Từ chối</button>
+        </div>
+      </div>
+
+      <ul class="players">
+        <li v-for="side in [1, 2]" :key="side" :class="{ turn: playing && room.current === side }">
+          <span class="dot" :class="side === 1 ? 'black' : 'white'">{{ side === 1 ? 'Đ' : 'T' }}</span>
+          <span class="pname">
+            {{ player(side)?.name ?? 'Đang chờ…' }}
+            <em v-if="side === you" class="small muted">(bạn)</em>
+          </span>
+          <span v-if="needReady && room.ready.includes(side)" class="ready small">✓ Sẵn sàng</span>
+          <span v-if="turnLeft != null && room.current === side" class="clock"
+                :class="{ low: turnLeft <= 10 }" :title="`Mỗi lượt ${room.turnSeconds} giây`">
+            ⏱ {{ turnLeft }}s
+          </span>
+          <span v-if="player(side)?.elo != null" class="elo small">
+            {{ player(side).elo }}
+            <b v-if="player(side).eloDelta" :class="player(side).eloDelta > 0 ? 'up' : 'down'">
+              {{ player(side).eloDelta > 0 ? '+' : '' }}{{ player(side).eloDelta }}
+            </b>
+          </span>
+          <span v-if="player(side) && !player(side).bot" class="online"
+                :class="{ off: !player(side).online }"
+                :title="player(side).online ? 'Đang kết nối' : 'Mất kết nối'"></span>
+        </li>
+      </ul>
+      <p v-if="!you" class="small muted">Bạn đang xem ván này.</p>
+
+      <dl class="meta small">
+        <div><dt>Phòng</dt><dd><strong>{{ room.code }}</strong></dd></div>
+        <div><dt>Bàn</dt><dd>{{ room.size || room.rows }} × {{ room.size || room.cols }}</dd></div>
+        <div><dt>Komi</dt><dd>{{ room.komi }}</dd></div>
+        <div v-if="isBot"><dt>Độ khó</dt><dd>{{ room.levelName }}</dd></div>
+        <div><dt>Đã đánh</dt><dd>{{ room.moves }} nước</dd></div>
+        <div><dt>Tù binh Đen bắt</dt><dd>{{ room.captured?.['1'] ?? 0 }}</dd></div>
+        <div><dt>Tù binh Trắng bắt</dt><dd>{{ room.captured?.['2'] ?? 0 }}</dd></div>
+      </dl>
+
+      <!-- Bảng tổng kết điểm Tromp-Taylor khi có kết quả tính điểm -->
+      <div v-if="room.score" class="score-summary card small">
+        <strong>Kết quả đếm điểm diện tích</strong>
+        <div class="row">
+          <span>Đen: <b>{{ room.score.black?.total }}</b></span>
+          <span>Trắng: <b>{{ room.score.white?.total }}</b></span>
+        </div>
+        <span class="muted">{{ room.winner === 1 ? 'Đen' : 'Trắng' }} thắng cách biệt {{ room.score.margin }} mục</span>
+      </div>
+
+      <p v-if="stats" class="small muted stats">{{ stats }}</p>
+
+      <div v-if="!isBot" class="invite">
+        <span class="small muted">Gửi link này cho bạn cùng mạng LAN:</span>
+        <div class="row">
+          <input class="input small" readonly :value="inviteLink" @focus="$event.target.select()" />
+          <button class="btn blue" @click="copyLink">{{ copied ? 'Đã chép' : 'Chép' }}</button>
+        </div>
+      </div>
+
+      <div class="actions">
+        <button class="btn green" :disabled="!you || !room.moves || request?.mine || (!isBot && !playing)"
+                @click="undo">
+          {{ isBot ? 'Hoàn tác' : 'Xin đi lại' }}
         </button>
+        <button v-if="canPlay" class="btn blue" @click="onPass">Bỏ lượt</button>
+        <button class="btn red" :disabled="!you" @click="newGame">Ván mới</button>
+        <button class="btn" @click="leaveRoom">Rời phòng</button>
       </div>
-      <button class="btn small" @click="leaveRoom">Rời phòng</button>
-    </header>
-
-    <!-- Thẻ hai người chơi -->
-    <div class="players-bar">
-      <!-- Đen -->
-      <div class="player-card" :class="{
-        active: room.current === 1 && playing,
-        winner: room.winner === 1,
-        isYou: you === 1
-      }">
-        <div class="stone-icon black">⚫</div>
-        <div class="player-meta">
-          <div class="name-row">
-            <strong>{{ player(1)?.name || 'Đang chờ…' }}</strong>
-            <span v-if="you === 1" class="tag you">Bạn</span>
-            <span v-if="needReady && room.ready?.includes(1)" class="tag ready">Đã sẵn sàng</span>
-          </div>
-          <div class="sub-row small muted">
-            <span v-if="player(1)?.elo">{{ player(1).elo }} elo</span>
-            <span class="prisoners">Tù binh bắt được: <strong>{{ room.captured?.['1'] ?? 0 }}</strong></span>
-          </div>
-        </div>
-      </div>
-
-      <!-- Trung tâm: Trạng thái & Đồng hồ -->
-      <div class="center-status">
-        <div class="status-msg" :class="status.tone">{{ status.text }}</div>
-        <div v-if="turnLeft != null && playing" class="turn-timer" :class="{ urgent: turnLeft <= 5 }">
-          ⏱ {{ turnLeft }}s
-        </div>
-      </div>
-
-      <!-- Trắng -->
-      <div class="player-card right" :class="{
-        active: room.current === 2 && playing,
-        winner: room.winner === 2,
-        isYou: you === 2
-      }">
-        <div class="player-meta">
-          <div class="name-row">
-            <span v-if="needReady && room.ready?.includes(2)" class="tag ready">Đã sẵn sàng</span>
-            <span v-if="you === 2" class="tag you">Bạn</span>
-            <strong>{{ player(2)?.name || 'Đang chờ…' }}</strong>
-          </div>
-          <div class="sub-row small muted">
-            <span class="prisoners">Tù binh bắt được: <strong>{{ room.captured?.['2'] ?? 0 }}</strong></span>
-            <span v-if="player(2)?.elo">{{ player(2).elo }} elo</span>
-          </div>
-        </div>
-        <div class="stone-icon white">⚪</div>
-      </div>
-    </div>
-
-    <!-- Bảng thông báo yêu cầu đi lại (nếu có) -->
-    <div v-if="request" class="request-banner">
-      <span>{{ request.text }}</span>
-      <div v-if="request.canAnswer" class="req-actions">
-        <button class="btn green small" @click="respond(true)">Đồng ý</button>
-        <button class="btn red small" @click="respond(false)">Từ chối</button>
-      </div>
-    </div>
-
-    <!-- Bảng tổng kết điểm số khi ván cờ kết thúc -->
-    <div v-if="room.score" class="score-modal card">
-      <h3>Kết quả đếm điểm diện tích (Tromp-Taylor)</h3>
-      <div class="score-cols">
-        <div class="score-side black-score" :class="{ win: room.winner === 1 }">
-          <h4>⚫ Đen: {{ room.score.black.total }} điểm</h4>
-          <p class="small muted">Quân sống: {{ room.score.black.stones }} · Đất: {{ room.score.black.territory }}</p>
-        </div>
-        <div class="score-side white-score" :class="{ win: room.winner === 2 }">
-          <h4>⚪ Trắng: {{ room.score.white.total }} điểm</h4>
-          <p class="small muted">
-            Quân sống: {{ room.score.white.stones }} · Đất: {{ room.score.white.territory }} · Komi: {{ room.score.white.komi }}
-          </p>
-        </div>
-      </div>
-      <div class="score-summary">
-        <strong>{{ room.winner === 1 ? 'Đen' : 'Trắng' }} thắng cách biệt {{ room.score.margin }} mục!</strong>
-      </div>
-    </div>
-
-    <!-- Bàn cờ SVG -->
-    <GoBoard
-      :room="room"
-      :can-play="canPlay"
-      :ghost-side="you || 1"
-      @play="onPlay"
-    />
-
-    <!-- Thanh nút hành động bên dưới bàn cờ -->
-    <footer class="controls-bar">
-      <!-- Nút Sẵn sàng cho đấu người -->
-      <button v-if="needReady && you" class="btn green" @click="toggleReady">
-        {{ iAmReady ? 'Hủy sẵn sàng' : '✓ Sẵn sàng vào ván' }}
-      </button>
-
-      <!-- Nút Bỏ lượt (Pass) -->
-      <button v-if="canPlay" class="btn blue" @click="onPass">
-        ⏭ Bỏ lượt (Pass)
-      </button>
-
-      <!-- Nút Xin đi lại (Undo) -->
-      <button v-if="you && playing && room.moves > 0" class="btn" @click="undo">
-        ↶ Xin đi lại
-      </button>
-
-      <!-- Nút Ván mới / Đầu hàng -->
-      <button v-if="you && (room.winner !== 0 || !playing || room.moves > 0)" class="btn" @click="newGame">
-        {{ playing && !isBot ? '🏳 Đầu hàng / Ván mới' : '🔄 Ván mới' }}
-      </button>
-    </footer>
-  </div>
+      <p v-if="!isBot && you" class="small muted">
+        Ván đấu người được tính elo. Mỗi lượt có {{ room.turnSeconds }} giây; hết giờ, rời phòng hoặc
+        bấm "Ván mới" khi ván chưa xong thì bị tính thua. Mỗi ván mới hai bên đổi quân.
+      </p>
+    </aside>
+  </section>
 </template>
 
 <style scoped>
-.game-view {
+.game {
   display: grid;
-  gap: 12px;
-  max-width: 1040px;
-  margin: 0 auto;
+  grid-template-columns: minmax(0, 1fr) 320px;
+  gap: 16px;
+  align-items: start;
 }
-.room-bar {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  background: var(--panel);
-  padding: 8px 16px;
+.board-wrap {
+  min-width: 0;
+  display: grid;
+  place-items: center;
+}
+.side { display: grid; gap: 14px; position: sticky; top: 16px; }
+.status { font-size: 1.15rem; font-weight: 700; text-align: center; padding: 6px 0; }
+.status.green { color: var(--green); }
+.status.red { color: var(--red); }
+.status.blue { color: var(--blue); }
+.status.muted { color: var(--muted); }
+.request {
+  display: grid;
+  gap: 8px;
+  padding: 10px 12px;
   border-radius: 10px;
-  border: 1px solid var(--panel-border);
+  border: 1px dashed var(--panel-border);
+  color: var(--muted);
+  text-align: center;
 }
-.room-info {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  flex-wrap: wrap;
-}
-.room-code strong {
-  color: var(--accent);
-  letter-spacing: 0.1em;
-  font-size: 1.1rem;
-}
-.players-bar {
-  display: grid;
-  grid-template-columns: 1fr auto 1fr;
-  align-items: center;
-  gap: 12px;
-}
-.player-card {
+.request.ask { border: 2px solid var(--accent); color: var(--text); font-weight: 600; }
+.players { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.players li {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 10px 14px;
-  background: var(--panel);
-  border: 2px solid var(--panel-border);
+  padding: 8px 10px;
   border-radius: 10px;
-  transition: all 0.2s;
+  border: 1px solid var(--panel-border);
 }
-.player-card.right {
-  justify-content: flex-end;
-  text-align: right;
+.players li.turn { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset; }
+.dot {
+  width: 28px; height: 28px; border-radius: 50%;
+  display: grid; place-items: center;
+  font-weight: 700; font-size: 0.85rem; flex: none;
 }
-.player-card.active {
-  border-color: #e5a93c;
-  box-shadow: 0 0 10px rgb(229 169 60 / 0.3);
-}
-.player-card.winner {
-  border-color: var(--green);
-  background: rgb(47 174 98 / 0.1);
-}
-.stone-icon { font-size: 1.8rem; line-height: 1; }
-.name-row { display: flex; align-items: center; gap: 6px; }
-.right .name-row { justify-content: flex-end; }
-.tag {
-  font-size: 0.7rem;
-  font-weight: 700;
-  padding: 1px 6px;
-  border-radius: 4px;
-}
-.tag.you { background: var(--blue); color: #fff; }
-.tag.ready { background: var(--green); color: #fff; }
-.sub-row { display: flex; gap: 8px; }
-.right .sub-row { justify-content: flex-end; }
-.prisoners strong { color: var(--accent); }
-.center-status {
-  text-align: center;
-  padding: 0 10px;
-  min-width: 170px;
-}
-.status-msg {
-  font-weight: 700;
-  font-size: 0.95rem;
-}
-.status-msg.green { color: var(--green); }
-.status-msg.red { color: var(--red); }
-.status-msg.blue { color: var(--blue); }
-.turn-timer {
-  font-size: 1.1rem;
-  font-weight: 700;
-  margin-top: 4px;
-  color: var(--text);
-}
-.turn-timer.urgent {
-  color: var(--red);
-  animation: pulse 1s infinite;
-}
-@keyframes pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.5; }
-}
-.request-banner {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  background: #3b2e16;
-  border: 1px solid #7a5a22;
-  color: #f7dfa5;
-  padding: 8px 16px;
-  border-radius: 8px;
-}
-.req-actions { display: flex; gap: 8px; }
-.score-modal {
-  padding: 16px;
-  text-align: center;
-  border: 2px solid var(--accent);
-}
-.score-cols {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 16px;
-  margin: 12px 0;
-}
-.score-side {
-  padding: 10px;
-  background: rgb(0 0 0 / 0.15);
-  border-radius: 8px;
-}
-.score-side.win {
-  border: 2px solid var(--green);
-  background: rgb(47 174 98 / 0.15);
-}
+.dot.black { background: #1a1a1a; color: #fff; }
+.dot.white { background: #fff; color: #1a1a1a; border: 1px solid var(--panel-border); }
+.pname { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ready { color: var(--green); font-weight: 700; white-space: nowrap; }
+.clock { font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.clock.low { color: var(--red); }
+.elo { color: var(--muted); white-space: nowrap; }
+.elo .up { color: var(--green); }
+.elo .down { color: var(--red); }
+.online { width: 9px; height: 9px; border-radius: 50%; background: #2fae62; flex: none; }
+.online.off { background: #b9b2a6; }
+.meta { margin: 0; display: grid; gap: 4px; }
+.meta div { display: flex; justify-content: space-between; gap: 8px; }
+.meta dt { color: var(--muted); }
+.meta dd { margin: 0; text-align: right; }
+.stats { margin: 0; }
 .score-summary {
-  font-size: 1.1rem;
-  color: var(--accent);
+  display: grid;
+  gap: 4px;
+  padding: 10px;
+  border-radius: 8px;
+  background: var(--bg);
 }
-.controls-bar {
-  display: flex;
-  justify-content: center;
-  gap: 12px;
-  flex-wrap: wrap;
-  padding: 8px 0;
-}
-@media (max-width: 720px) {
-  .players-bar {
-    grid-template-columns: 1fr 1fr;
-  }
-  .center-status {
-    grid-column: 1 / -1;
-    order: -1;
-  }
+.invite { display: grid; gap: 6px; }
+.invite .row > .btn { flex: none; }
+.actions { display: grid; grid-template-columns: repeat(auto-fit, minmax(90px, 1fr)); gap: 8px; }
+@media (max-width: 860px) {
+  .game { grid-template-columns: 1fr; }
+  .side { position: static; }
 }
 </style>

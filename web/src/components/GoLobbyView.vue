@@ -25,7 +25,6 @@ async function refreshRooms() {
     const res = await fetch('/api/rooms')
     if (res.ok) {
       const all = await res.json()
-      // Chỉ lấy các phòng cờ vây
       rooms.value = all.filter((r) => r.game === 'go')
     }
   } catch { /* máy chủ đang bận */ }
@@ -41,11 +40,7 @@ onMounted(async () => {
 })
 onUnmounted(() => clearInterval(timer))
 
-const GO_SIZES = [
-  { size: 9, label: '9 × 9 (Chơi nhanh, luyện tập)' },
-  { size: 13, label: '13 × 13 (Trung bình, tầm 15-20 phút)' },
-  { size: 19, label: '19 × 19 (Chuẩn quốc tế)' },
-]
+const SIZES = [9, 13, 19]
 
 function startBot() {
   createRoom({
@@ -71,13 +66,13 @@ function startPvp() {
   <section class="lobby">
     <!-- Cột chơi với máy -->
     <div class="card">
-      <h2>🤖 Chơi cờ vây với máy</h2>
+      <h2>🤖 Chơi với máy</h2>
       <div class="field">
-        <span>Độ khó của Bot</span>
+        <span>Độ khó</span>
         <div class="segmented">
           <button v-for="level in info.goLevels || []" :key="level.id"
                   :class="{ active: bot.level === level.id }" @click="bot.level = level.id">
-            {{ level.name }}
+            {{ level.name }} <small class="muted-on">· {{ level.seconds }}s</small>
           </button>
         </div>
       </div>
@@ -88,36 +83,42 @@ function startPvp() {
           <button :class="{ active: bot.side === 2 }" @click="bot.side = 2">⚪ Trắng · đi sau</button>
         </div>
       </div>
-      <label class="field">
-        <span>Kích thước bàn cờ</span>
-        <select v-model.number="bot.size" class="input">
-          <option v-for="s in GO_SIZES" :key="s.size" :value="s.size">{{ s.label }}</option>
-        </select>
-      </label>
+      <div class="field">
+        <span>Kích thước bàn</span>
+        <div class="segmented">
+          <button v-for="n in SIZES" :key="n"
+                  :class="{ active: bot.size === n }" @click="bot.size = n">
+            {{ n }} × {{ n }}
+          </button>
+        </div>
+      </div>
       <button class="btn green block" :disabled="!state.connected" @click="startBot">
-        Bắt đầu ván cờ vây với máy
+        Bắt đầu ván với máy
       </button>
     </div>
 
     <!-- Cột chơi người với người qua LAN -->
     <div class="card">
-      <h2>👥 Đấu người qua mạng LAN</h2>
-      <label class="field">
-        <span>Kích thước bàn cờ</span>
-        <select v-model.number="pvp.size" class="input">
-          <option v-for="s in GO_SIZES" :key="s.size" :value="s.size">{{ s.label }}</option>
-        </select>
-      </label>
+      <h2>👥 Chơi với người (mạng LAN)</h2>
+      <div class="field">
+        <span>Kích thước bàn</span>
+        <div class="segmented">
+          <button v-for="n in SIZES" :key="n"
+                  :class="{ active: pvp.size === n }" @click="pvp.size = n">
+            {{ n }} × {{ n }}
+          </button>
+        </div>
+      </div>
       <label class="field">
         <span>Điểm chấp (Komi cho bên Trắng)</span>
         <input v-model.number="pvp.komi" type="number" step="0.5" class="input" />
       </label>
       <button class="btn blue block" :disabled="!state.connected" @click="startPvp">
-        Tạo phòng cờ vây mới
+        Tạo phòng mới
       </button>
 
       <div class="field join">
-        <span>Hoặc nhập mã phòng cờ vây</span>
+        <span>Hoặc nhập mã phòng</span>
         <form class="row" @submit.prevent="joinRoom(joinCode)">
           <input v-model="joinCode" class="input code" maxlength="4" placeholder="ABCD" />
           <button class="btn green" :disabled="!state.connected || !joinCode.trim()">Vào phòng</button>
@@ -127,8 +128,8 @@ function startPvp() {
 
     <!-- Danh sách phòng cờ vây đang có -->
     <div class="card rooms-card">
-      <h2>Các phòng cờ vây <span class="small muted">· tự cập nhật</span></h2>
-      <p v-if="!rooms.length" class="small muted">Chưa có phòng cờ vây nào. Hãy tạo phòng và gửi mã cho bạn bè.</p>
+      <h2>Các phòng <span class="small muted">· tự cập nhật</span></h2>
+      <p v-if="!rooms.length" class="small muted">Chưa có phòng nào. Hãy tạo phòng và gửi mã cho bạn bè.</p>
       <div class="rooms">
         <button v-for="room in rooms" :key="room.code" class="room" :class="room.status"
                 @click="joinRoom(room.code)">
@@ -140,7 +141,7 @@ function startPvp() {
             {{ room.players.join(' vs ') }}<template v-if="room.status === 'waiting'"> · chờ đối thủ</template>
           </div>
           <div class="small muted">
-            Bàn {{ room.rows }}×{{ room.cols }} · {{ room.moves }} nước đi
+            Bàn {{ room.rows }}×{{ room.cols }} · {{ room.moves }} nước
           </div>
           <span class="join-hint">{{ hint(room) }}</span>
         </button>
@@ -157,6 +158,7 @@ function startPvp() {
   max-width: 920px;
   margin: 0 auto;
 }
+.segmented small { opacity: 0.75; }
 .join { margin-top: 18px; }
 .code { text-transform: uppercase; letter-spacing: 0.2em; font-weight: 700; }
 .rooms-card { grid-column: 1 / -1; }

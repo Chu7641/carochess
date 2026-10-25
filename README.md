@@ -7,9 +7,10 @@ Project có kèm bản desktop (pygame) dùng chung engine.
 - **Tài khoản:** đăng ký/đăng nhập, lưu trong SQLite (`data/caro.db`). Tài khoản mới phải
   được admin phê duyệt mới đăng nhập được. Bấm vào tên mình trên thanh tiêu đề để đổi mật khẩu.
   Đăng nhập xong thì chọn trò chơi: cờ caro, cờ vây hoặc cờ tướng.
-- **Cờ tướng:** hiện chỉ có đấu với máy, 3 mức (Dễ 0,5 giây, Vừa 1,5 giây, Khó 4 giây mỗi nước;
-  bot alpha-beta). Đủ luật: cản chân Mã, cản mắt Tượng, Pháo ăn qua ngòi, lộ mặt tướng; hết nước đi
-  là thua, lặp thế cờ 3 lần là hòa (chưa có luật cấm chiếu mãi, đuổi mãi). Bấm quân để thấy các ô đi được.
+- **Cờ tướng:** hỗ trợ cả đấu người qua LAN và đấu với máy (3 mức: Dễ 0,5 giây, Vừa 1,5 giây, Khó 4 giây mỗi nước;
+  bot alpha-beta). Đấu người dùng chung sẵn sàng, đồng hồ 30 giây, tính elo, xin đi lại. Đủ luật: cản chân Mã,
+  cản mắt Tượng, Pháo ăn qua ngòi, lộ mặt tướng; hết nước đi là thua, lặp thế cờ 3 lần là hòa (chưa có luật cấm chiếu mãi, đuổi mãi).
+  Bấm quân để thấy các ô đi được, tự động lật bàn cờ khi cầm Đen.
 - **Cờ vây:** bàn 9×9, 13×13, 19×19, có bắt quân, cấm tự sát, luật Kiếp, bỏ lượt và
   đếm điểm diện tích kèm komi (chưa tự loại quân chết: hãy bắt hết trước khi cùng bỏ lượt).
   Đấu người dùng chung sẵn sàng, đồng hồ, elo; đấu máy có 3 mức (bot Monte Carlo, mạnh nhất ở 9×9).
