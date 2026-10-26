@@ -14,6 +14,10 @@ Project có kèm bản desktop (pygame) dùng chung engine.
 - **Cờ vây:** bàn 9×9, 13×13, 19×19, có bắt quân, cấm tự sát, luật Kiếp, bỏ lượt và
   đếm điểm diện tích kèm komi (chưa tự loại quân chết: hãy bắt hết trước khi cùng bỏ lượt).
   Đấu người dùng chung sẵn sàng, đồng hồ, elo; đấu máy có 3 mức (bot Monte Carlo, mạnh nhất ở 9×9).
+- **Dò mìn:** chơi một người theo phong cách Windows cổ điển. 3 mức độ (Dễ 9×9 10 mìn, Vừa 16×16 40 mìn, Khó 16×30 99 mìn).
+  Cơ chế chống gian lận: máy chủ giữ vị trí mìn và tự đo thời gian chuẩn xác bằng `time.monotonic()`.
+  Lần mở đầu luôn an toàn và mở ra một vùng. Hỗ trợ mở lan (chording), cắm cờ (chuột phải hoặc giữ 400ms trên điện thoại),
+  bảng xếp hạng thành tích thời gian tốt nhất của các tài khoản.
 - **Quản trị:** tài khoản admin khai báo trong `.env`. Trang Quản trị: duyệt/từ chối đăng ký,
   xem người dùng, nâng lên admin, đặt lại mật khẩu (sinh ngẫu nhiên), reset elo, xóa tài khoản.
 - **Đấu máy:** 3 mức độ khó (Nhanh 2 giây, Mạnh 5 giây, Chuyên gia 12 giây mỗi nước).
@@ -118,7 +122,8 @@ Vite chuyển tiếp `/api` và `/ws` sang cổng 8000. Sửa giao diện xong, 
 .venv\Scripts\python.exe caro_game.py --self-test   # engine: luật, VCF/VCT, make/unmake
 .venv\Scripts\python.exe go_game.py --self-test     # cờ vây: luật, đếm điểm, bot
 .venv\Scripts\python.exe xiangqi_game.py --self-test   # cờ tướng: luật, perft, bot
-.venv\Scripts\python.exe -m pytest server           # máy chủ: phòng, WebSocket, bot
+.venv\Scripts\python.exe minesweeper_game.py --self-test # dò mìn: luật, loang mở, chording
+.venv\Scripts\python.exe -m pytest server           # máy chủ: phòng, WebSocket, bot, dò mìn
 ```
 
 ## Cấu trúc
@@ -127,11 +132,13 @@ Vite chuyển tiếp `/api` và `/ws` sang cổng 8000. Sửa giao diện xong, 
 caro_game.py          Engine (luật, bot) + game desktop pygame
 go_game.py            Engine cờ vây: luật, đếm điểm, bot Monte Carlo
 xiangqi_game.py       Engine cờ tướng: luật, bot alpha-beta
+minesweeper_game.py   Engine trò chơi Dò mìn (Minesweeper)
 GEMINI.md             Quy tắc cho agent viết code (Gemini/Antigravity CLI)
 server/
-  app.py              FastAPI: đăng nhập, WebSocket /ws, /api/rooms, phục vụ web/dist
-  auth.py             Tài khoản + phiên đăng nhập (SQLite, mật khẩu băm scrypt), đọc .env
+  app.py              FastAPI: đăng nhập, WebSocket /ws, /api/rooms, /api/mines, phục vụ web/dist
+  auth.py             Tài khoản + phiên đăng nhập + điểm dò mìn (SQLite, scrypt), đọc .env
   game.py             Phòng chơi: ghế, luật, hoàn tác, đổi bên
+  mines.py            Quản lý các ván dò mìn đang chơi trong bộ nhớ
   bot.py              Chạy bot ở luồng nền cho mỗi phòng, có nghĩ trước
   go_room.py, go_bot.py  Phòng chơi và bot nền cho cờ vây
   xiangqi_room.py, xiangqi_bot.py  Phòng chơi và bot nền cho cờ tướng
@@ -141,7 +148,8 @@ web/
   src/components/     LoginView, GamesView (chọn trò), LobbyView (sảnh), GameView (ván cờ),
                       CaroBoard (bàn cờ SVG), AdminView (quản trị),
                       GoLobbyView / GoGameView / GoBoard (cờ vây),
-                      XiangqiLobbyView / XiangqiGameView / XiangqiBoard (cờ tướng)
+                      XiangqiLobbyView / XiangqiGameView / XiangqiBoard (cờ tướng),
+                      MinesweeperView (dò mìn)
 .claude/skills/       Hướng dẫn cho Claude Code khi làm việc với project
 ```
 

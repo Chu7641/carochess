@@ -87,6 +87,14 @@ def init():
                 user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
                 expires REAL NOT NULL
             );
+            CREATE TABLE IF NOT EXISTS mines_scores (
+                id INTEGER PRIMARY KEY,
+                user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                level TEXT NOT NULL,
+                ms INTEGER NOT NULL,
+                finished REAL NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_mines_scores_level_ms ON mines_scores(level, ms);
         """)
         # Database từ bản cũ: thêm cột mới. Người dùng cũ coi như đã duyệt, elo khởi điểm.
         existing = [col["name"] for col in db.execute("PRAGMA table_info(users)")]
@@ -180,6 +188,92 @@ def record_game(name_a, name_b, score_a):
     return a + delta, b - delta, delta
 
 
+# ---------- điểm dò mìn (minesweeper) ----------
+def record_mines(user_id, level, ms):
+    now = time.time()
+    with closing(_db()) as db, db:
+        db.execute(
+            "INSERT INTO mines_scores (user_id, level, ms, finished) VALUES (?, ?, ?, ?)",
+            (user_id, str(level), int(ms), now),
+        )
+
+
+def mines_leaderboard(level, limit=20):
+    """Thời gian tốt nhất của mỗi người chơi, sắp xếp tăng dần theo mili-giây."""
+    with closing(_db()) as db:
+        rows = db.execute(
+            """
+            WITH BestPerUser AS (
+                SELECT
+                    s.user_id,
+                    u.username,
+                    s.ms,
+                    s.finished,
+                    ROW_NUMBER() OVER (
+                        PARTITION BY s.user_id
+                        ORDER BY s.ms ASC, s.finished ASC
+                    ) AS rn
+                FROM mines_scores s
+                JOIN users u ON u.id = s.user_id
+                WHERE s.level = ?
+            )
+            SELECT username, ms, finished
+            FROM BestPerUser
+            WHERE rn = 1
+            ORDER BY ms ASC, finished ASC
+            LIMIT ?
+            """,
+            (str(level), int(limit)),
+        ).fetchall()
+    return [
+        {
+            "rank": idx,
+            "username": row["username"],
+            "ms": row["ms"],
+            "finished": row["finished"],
+        }
+        for idx, row in enumerate(rows, start=1)
+    ]
+
+
+def mines_best(user_id, level):
+    """Trả thời gian tốt nhất và thứ hạng tổng thể của người dùng tại cấp độ này, hoặc None."""
+    with closing(_db()) as db:
+        row = db.execute(
+            """
+            WITH BestPerUser AS (
+                SELECT
+                    s.user_id,
+                    s.ms,
+                    s.finished,
+                    ROW_NUMBER() OVER (
+                        PARTITION BY s.user_id
+                        ORDER BY s.ms ASC, s.finished ASC
+                    ) AS rn
+                FROM mines_scores s
+                WHERE s.level = ?
+            ),
+            RankedUsers AS (
+                SELECT
+                    user_id,
+                    ms,
+                    ROW_NUMBER() OVER (
+                        ORDER BY ms ASC, finished ASC
+                    ) AS rank
+                FROM BestPerUser
+                WHERE rn = 1
+            )
+            SELECT ms, rank
+            FROM RankedUsers
+            WHERE user_id = ?
+            """,
+            (str(level), user_id),
+        ).fetchone()
+    if row is None:
+        return None
+    return {"ms": row["ms"], "rank": row["rank"]}
+
+
 # ---------- quản trị (chỉ gọi sau khi đã kiểm tra quyền admin) ----------
 def list_users():
     with closing(_db()) as db:
@@ -201,6 +295,7 @@ def reject(user_id):
 
 def delete_user(user_id):
     _write("DELETE FROM sessions WHERE user_id = ?", user_id)  # SQLite không tự xóa theo khóa ngoại
+    _write("DELETE FROM mines_scores WHERE user_id = ?", user_id)
     if not _write("DELETE FROM users WHERE id = ?", user_id):
         raise AuthError("Không tìm thấy tài khoản.")
 

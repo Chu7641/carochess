@@ -9,6 +9,7 @@ import GoLobbyView from './components/GoLobbyView.vue'
 import GoGameView from './components/GoGameView.vue'
 import XiangqiLobbyView from './components/XiangqiLobbyView.vue'
 import XiangqiGameView from './components/XiangqiGameView.vue'
+import MinesweeperView from './components/MinesweeperView.vue'
 import AdminView from './components/AdminView.vue'
 import PasswordView from './components/PasswordView.vue'
 
@@ -16,6 +17,7 @@ const TITLES = {
   caro: 'CỜ CARO · GOMOKU',
   go: 'CỜ VÂY · GO / BADUK',
   xiangqi: 'CỜ TƯỚNG · XIANGQI',
+  minesweeper: 'DÒ MÌN · MINESWEEPER',
   admin: 'QUẢN TRỊ',
   password: 'TÀI KHOẢN',
 }
@@ -67,6 +69,9 @@ onMounted(checkSession)
       <XiangqiGameView v-if="state.code && state.room" />
       <div v-else-if="state.code" class="loading muted">Đang vào phòng cờ tướng {{ state.code }}…</div>
       <XiangqiLobbyView v-else />
+    </template>
+    <template v-else-if="state.game === 'minesweeper'">
+      <MinesweeperView />
     </template>
     <AdminView v-else-if="state.game === 'admin' && state.user.isAdmin" />
     <PasswordView v-else-if="state.game === 'password'" />

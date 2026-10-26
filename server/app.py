@@ -38,9 +38,10 @@ from pydantic import BaseModel
 
 from caro_game import EMPTY, LEVELS, O, X
 from go_game import BLACK, GO_LEVELS, GO_SIZES, WHITE
+from minesweeper_game import MINES_LEVELS
 from xiangqi_game import RED as XIANGQI_RED, XIANGQI_LEVELS
 
-from . import auth
+from . import auth, mines
 from .bot import BotDriver
 from .game import MAX_SIZE, MIN_SIZE, GameError, Room, new_code
 from .go_bot import GoBotDriver
@@ -247,6 +248,7 @@ async def lifespan(_app):
         while True:
             await asyncio.sleep(60)
             hub.cleanup()
+            mines.cleanup_games()
 
     async def clock_loop():
         while True:
@@ -364,9 +366,86 @@ def info():
         "xiangqiLevels": [{"id": i, "name": name, "seconds": seconds}
                           for i, (name, seconds) in enumerate(XIANGQI_LEVELS)],
         "goSizes": list(GO_SIZES),
+        "minesLevels": [{"id": k, "name": name, "rows": r, "cols": c, "mines": m}
+                        for k, (name, r, c, m) in MINES_LEVELS.items()],
         "minSize": MIN_SIZE,
         "maxSize": MAX_SIZE,
     }
+
+
+def _extract_mines_coords(body: object) -> tuple[int, int]:
+    if not isinstance(body, dict):
+        raise HTTPException(400, "Dữ liệu gửi lên phải là đối tượng JSON.")
+    if "r" not in body or "c" not in body:
+        raise HTTPException(400, "Thiếu tọa độ ô (r, c).")
+    r, c = body["r"], body["c"]
+    if type(r) is not int or type(c) is not int:
+        raise HTTPException(400, "Tọa độ r và c phải là số nguyên.")
+    return r, c
+
+
+@app.post("/api/mines/new")
+async def mines_new(request: Request, user=Depends(current_user)):
+    try:
+        body = await request.json()
+    except Exception:
+        raise HTTPException(400, "Dữ liệu không đúng định dạng JSON.")
+    if not isinstance(body, dict) or "level" not in body:
+        raise HTTPException(400, "Thiếu cấp độ chơi.")
+    level = body["level"]
+    if not isinstance(level, str) or level not in MINES_LEVELS:  # list/dict không băm được
+        raise HTTPException(400, "Cấp độ không hợp lệ.")
+    active = mines.new_game(user["id"], level)
+    return active.snapshot()
+
+
+@app.post("/api/mines/reveal")
+async def mines_reveal(request: Request, user=Depends(current_user)):
+    try:
+        body = await request.json()
+    except Exception:
+        raise HTTPException(400, "Dữ liệu không đúng định dạng JSON.")
+    r, c = _extract_mines_coords(body)
+    active = mines.get_game(user["id"])
+    if active is None:
+        raise HTTPException(400, "Chưa tạo ván chơi.")
+    try:
+        active.on_reveal(r, c)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    return active.snapshot()
+
+
+@app.post("/api/mines/flag")
+async def mines_flag(request: Request, user=Depends(current_user)):
+    try:
+        body = await request.json()
+    except Exception:
+        raise HTTPException(400, "Dữ liệu không đúng định dạng JSON.")
+    r, c = _extract_mines_coords(body)
+    active = mines.get_game(user["id"])
+    if active is None:
+        raise HTTPException(400, "Chưa tạo ván chơi.")
+    try:
+        active.on_flag(r, c)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    return active.snapshot()
+
+
+@app.get("/api/mines/state")
+def mines_state(user=Depends(current_user)):
+    active = mines.get_game(user["id"])
+    return active.snapshot() if active else None
+
+
+@app.get("/api/mines/leaderboard")
+def mines_leaderboard_route(level: str = "easy", user=Depends(current_user)):
+    if level not in MINES_LEVELS:
+        raise HTTPException(400, "Cấp độ không hợp lệ.")
+    top = auth.mines_leaderboard(level, limit=20)
+    me = auth.mines_best(user["id"], level)
+    return {"top": top, "me": me}
 
 
 @app.get("/api/rooms", dependencies=[Depends(current_user)])
