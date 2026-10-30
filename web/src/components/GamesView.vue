@@ -7,12 +7,13 @@ const GAMES = [
   { id: 'go', name: 'Cờ vây', icon: '⚪⚫', desc: 'Vây bắt quân và chiếm đất. Hỗ trợ bàn 9×9, 13×13, 19×19 qua LAN hoặc đấu với máy.' },
   { id: 'xiangqi', name: 'Cờ tướng', icon: '帥將', desc: 'Đấu trí trên chiến trường Hán - Sở. Đấu với máy các cấp độ từ Dễ đến Khó.' },
   { id: 'minesweeper', name: 'Dò mìn', icon: '💣', desc: 'Dò tìm và cắm cờ toàn bộ bãi mìn kiểu Windows cổ điển. Bảng xếp hạng thời gian.' },
+  { id: 'sudoku', name: 'Sudoku', icon: '🔢', desc: 'Điền các chữ số 1–9 vào bảng 9×9 sao cho không trùng hàng, cột và khối 3×3. Bảng xếp hạng.' },
 ]
 </script>
 
 <template>
   <section>
-    <h2 class="title">Chọn trò chơi</h2>
+    <h2 class="title">Chọn công cụ</h2>
     <div class="games">
       <button v-for="game in GAMES" :key="game.id" class="card game" @click="chooseGame(game.id)">
         <span class="icon" aria-hidden="true">{{ game.icon }}</span>

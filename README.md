@@ -65,7 +65,6 @@ copy .env.example .env      # macOS / Linux: cp .env.example .env
 Tài khoản admin được tạo ở lần chạy máy chủ đầu tiên; đăng nhập bằng `ADMIN_USERNAME` và
 `ADMIN_PASSWORD` trong `.env`. Sửa `ADMIN_PASSWORD` sau lần chạy đầu không đổi mật khẩu của
 tài khoản đã tạo. `.env` và thư mục `data/` không được đưa lên git.
-
 Các lệnh bên dưới viết theo Windows. Trên macOS/Linux, thay `.venv\Scripts\python.exe`
 bằng `.venv/bin/python`.
 

@@ -39,9 +39,10 @@ from pydantic import BaseModel
 from caro_game import EMPTY, LEVELS, O, X
 from go_game import BLACK, GO_LEVELS, GO_SIZES, WHITE
 from minesweeper_game import MINES_LEVELS
+from sudoku_game import SUDOKU_LEVELS, SudokuGame, generate as generate_sudoku
 from xiangqi_game import RED as XIANGQI_RED, XIANGQI_LEVELS
 
-from . import auth, mines
+from . import auth, mines, sudoku
 from .bot import BotDriver
 from .game import MAX_SIZE, MIN_SIZE, GameError, Room, new_code
 from .go_bot import GoBotDriver
@@ -249,6 +250,7 @@ async def lifespan(_app):
             await asyncio.sleep(60)
             hub.cleanup()
             mines.cleanup_games()
+            sudoku.cleanup_games()
 
     async def clock_loop():
         while True:
@@ -368,6 +370,8 @@ def info():
         "goSizes": list(GO_SIZES),
         "minesLevels": [{"id": k, "name": name, "rows": r, "cols": c, "mines": m}
                         for k, (name, r, c, m) in MINES_LEVELS.items()],
+        "sudokuLevels": [{"id": k, "name": name, "clues": clues}
+                         for k, (name, clues) in SUDOKU_LEVELS.items()],
         "minSize": MIN_SIZE,
         "maxSize": MAX_SIZE,
     }
@@ -445,6 +449,77 @@ def mines_leaderboard_route(level: str = "easy", user=Depends(current_user)):
         raise HTTPException(400, "Cấp độ không hợp lệ.")
     top = auth.mines_leaderboard(level, limit=20)
     me = auth.mines_best(user["id"], level)
+    return {"top": top, "me": me}
+
+
+def _extract_sudoku_cell(body: object) -> tuple[int, int, int]:
+    if not isinstance(body, dict):
+        raise HTTPException(400, "Dữ liệu gửi lên phải là đối tượng JSON.")
+    if "r" not in body or "c" not in body or "v" not in body:
+        raise HTTPException(400, "Thiếu thông tin ô (r, c, v).")
+    r, c, v = body["r"], body["c"], body["v"]
+    if type(r) is not int or type(c) is not int or type(v) is not int:
+        raise HTTPException(400, "Tọa độ r, c và giá trị v phải là số nguyên.")
+    return r, c, v
+
+
+@app.post("/api/sudoku/new")
+async def sudoku_new(request: Request, user=Depends(current_user)):
+    try:
+        body = await request.json()
+    except Exception:
+        raise HTTPException(400, "Dữ liệu không đúng định dạng JSON.")
+    if not isinstance(body, dict) or "level" not in body:
+        raise HTTPException(400, "Thiếu cấp độ chơi.")
+    level = body["level"]
+    if not isinstance(level, str) or level not in SUDOKU_LEVELS:
+        raise HTTPException(400, "Cấp độ không hợp lệ.")
+    puzzle, solution = await asyncio.to_thread(generate_sudoku, level)
+    active = sudoku.new_game(user["id"], level, game=SudokuGame(puzzle, solution))
+    return active.snapshot()
+
+
+@app.post("/api/sudoku/set")
+async def sudoku_set(request: Request, user=Depends(current_user)):
+    try:
+        body = await request.json()
+    except Exception:
+        raise HTTPException(400, "Dữ liệu không đúng định dạng JSON.")
+    r, c, v = _extract_sudoku_cell(body)
+    active = sudoku.get_game(user["id"])
+    if active is None:
+        raise HTTPException(400, "Chưa tạo ván chơi.")
+    try:
+        active.on_set(r, c, v)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    return active.snapshot()
+
+
+@app.post("/api/sudoku/hint")
+async def sudoku_hint(user=Depends(current_user)):  # async: sửa ván cùng luồng với /set, không ghi điểm 2 lần
+    active = sudoku.get_game(user["id"])
+    if active is None:
+        raise HTTPException(400, "Chưa tạo ván chơi.")
+    try:
+        active.on_hint()
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    return active.snapshot()
+
+
+@app.get("/api/sudoku/state")
+def sudoku_state(user=Depends(current_user)):
+    active = sudoku.get_game(user["id"])
+    return active.snapshot() if active else None
+
+
+@app.get("/api/sudoku/leaderboard")
+def sudoku_leaderboard_route(level: str = "easy", user=Depends(current_user)):
+    if not isinstance(level, str) or level not in SUDOKU_LEVELS:
+        raise HTTPException(400, "Cấp độ không hợp lệ.")
+    top = auth.sudoku_leaderboard(level, limit=20)
+    me = auth.sudoku_best(user["id"], level)
     return {"top": top, "me": me}
 
 

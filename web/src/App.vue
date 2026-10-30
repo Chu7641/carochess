@@ -10,6 +10,7 @@ import GoGameView from './components/GoGameView.vue'
 import XiangqiLobbyView from './components/XiangqiLobbyView.vue'
 import XiangqiGameView from './components/XiangqiGameView.vue'
 import MinesweeperView from './components/MinesweeperView.vue'
+import SudokuView from './components/SudokuView.vue'
 import AdminView from './components/AdminView.vue'
 import PasswordView from './components/PasswordView.vue'
 
@@ -18,6 +19,7 @@ const TITLES = {
   go: 'CỜ VÂY · GO / BADUK',
   xiangqi: 'CỜ TƯỚNG · XIANGQI',
   minesweeper: 'DÒ MÌN · MINESWEEPER',
+  sudoku: 'SUDOKU',
   admin: 'QUẢN TRỊ',
   password: 'TÀI KHOẢN',
 }
@@ -37,8 +39,8 @@ onMounted(checkSession)
   <header class="topbar">
     <h1>
       <button v-if="state.user && state.game && !state.code" class="back"
-              title="Chọn trò chơi khác" @click="chooseGame(null)">←</button>
-      {{ TITLES[state.game] ?? 'TRÒ CHƠI LAN' }}
+              title="Chọn công cụ khác" @click="chooseGame(null)">←</button>
+      {{ TITLES[state.game] ?? 'KHÔNG GIAN LÀM VIỆC' }}
     </h1>
     <div v-if="state.user" class="who">
       <button v-if="state.user.isAdmin && state.game !== 'admin' && !state.code" class="btn small"
@@ -72,6 +74,9 @@ onMounted(checkSession)
     </template>
     <template v-else-if="state.game === 'minesweeper'">
       <MinesweeperView />
+    </template>
+    <template v-else-if="state.game === 'sudoku'">
+      <SudokuView />
     </template>
     <AdminView v-else-if="state.game === 'admin' && state.user.isAdmin" />
     <PasswordView v-else-if="state.game === 'password'" />
