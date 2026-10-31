@@ -25,8 +25,10 @@ giao diện Vue 3 + Vite (`web/src/`), tài khoản SQLite (`server/auth.py`).
   mọi thay đổi trạng thái phòng phải đi qua `hub.changed(room)`.
 - API chỉ admin dùng: thêm `Depends(current_admin)`. Không tin dữ liệu từ client.
 - Web: không thêm router hay store ngoài; trạng thái chung ở `web/src/game.js`.
-- Logic mới không tầm thường thì thêm test trong `server/tests/test_server.py`
-  (fixture `client`, hàm `account()`, `login()`, `start()` có sẵn).
+- Logic mới không tầm thường thì thêm test trong `server/tests/`: test nằm theo từng file trò
+  (`test_caro.py`, `test_go.py`, `test_xiangqi.py`, `test_battleship.py`, `test_mines.py`, `test_sudoku.py`...);
+  helper dùng chung nằm ở `server/tests/conftest.py` (fixture `client`, hàm `account()`, `login()`, `start()`...).
+  Khi thêm trò mới thì tạo file `test_<trò>.py` riêng.
 
 ## Khi xong
 Trả lời ngắn: đã sửa file nào, vì sao, test nào đã thêm, và điều gì chưa làm hoặc chưa chắc.
