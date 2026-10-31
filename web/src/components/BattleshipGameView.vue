@@ -30,11 +30,59 @@ const myFleet = computed(() => room.value?.myFleet)
 const opponentBoard = computed(() => room.value?.opponentBoard)
 const lastShot = computed(() => room.value?.lastShot)
 
+const lanIps = ref([])
+const copied = ref(false)
+const now = ref(Date.now())
+let ticker = null
+
+onMounted(async () => {
+  ticker = setInterval(() => { now.value = Date.now() }, 200)
+  try {
+    lanIps.value = (await (await fetch('/api/info')).json()).lan
+  } catch { /* dùng mặc định */ }
+})
+onUnmounted(() => clearInterval(ticker))
+
+const turnLeft = computed(() => {
+  const r = room.value
+  if (!r || r.turnLeft == null) return null
+  return Math.max(0, Math.ceil(r.turnLeft - (now.value - (r.receivedAt || now.value)) / 1000))
+})
+
+const inviteLink = computed(() => {
+  const local = ['localhost', '127.0.0.1', '::1', '[::1]'].includes(location.hostname)
+  const host = local && lanIps.value.length
+    ? `${lanIps.value[0]}${location.port ? `:${location.port}` : ''}`
+    : location.host
+  return `${location.protocol}//${host}/?room=${room.value?.code}`
+})
+
+async function copyLink() {
+  try {
+    await navigator.clipboard.writeText(inviteLink.value)
+  } catch {
+    const input = document.createElement('textarea')
+    input.value = inviteLink.value
+    document.body.appendChild(input)
+    input.select()
+    document.execCommand('copy')
+    input.remove()
+  }
+  copied.value = true
+  setTimeout(() => { copied.value = false }, 1500)
+}
+
 const canShoot = computed(() =>
   phase.value === 'playing' &&
+  you.value != null &&
   you.value === room.value?.current &&
   (!isBot.value || !room.value?.botThinking)
 )
+
+const iAmPlaced = computed(() => {
+  if (!you.value) return false
+  return room.value?.placed?.includes(you.value) || room.value?.ready?.includes(you.value)
+})
 
 // Trạng thái xếp tàu thủ công
 const placedShips = ref([])
@@ -77,7 +125,10 @@ onUnmounted(() => {
 })
 
 watch(() => room.value?.notice, (notice) => {
-  if (notice && !notice.includes('Trúng') && !notice.includes('Đánh chìm') && !notice.includes('Trượt') && !notice.includes('bắt đầu')) {
+  if (notice && !notice.includes('Trúng') && !notice.includes('trúng') &&
+      !notice.includes('Đánh chìm') && !notice.includes('đánh chìm') &&
+      !notice.includes('Trượt') && !notice.includes('trượt') &&
+      !notice.includes('bắt đầu') && !notice.includes('Bắt đầu')) {
     showError(notice)
   }
 })
@@ -90,6 +141,19 @@ watch(phase, (newPhase) => {
     hoverPos.value = null
   }
 })
+
+// Nếu vào lại phòng mà mình đã xếp tàu từ trước (server có myFleet)
+watch(myFleet, (fleet) => {
+  if (phase.value === 'placing' && fleet?.ships?.length && !placedShips.value.length) {
+    placedShips.value = fleet.ships.map((s) => ({
+      name: s.name,
+      len: s.len,
+      r: s.r,
+      c: s.c,
+      vertical: s.vertical,
+    }))
+  }
+}, { immediate: true })
 
 // Tính danh sách các ô của một tàu
 function getShipCells(r, c, len, vertical) {
@@ -125,8 +189,17 @@ function isPlacementValid(r, c, len, vertical) {
   return true
 }
 
+// Chuột sát mép: lùi tàu vào trong cho vừa bàn
+function fitOnBoard(r, c, len, vertical) {
+  return {
+    r: Math.min(r, 10 - (vertical ? len : 1)),
+    c: Math.min(c, 10 - (vertical ? 1 : len)),
+  }
+}
+
 // Tàu xem trước khi di chuột trong giai đoạn xếp tàu
 const previewShip = computed(() => {
+  if (iAmPlaced.value) return null
   if (!hoverPos.value || !selectedShipDef.value || phase.value !== 'placing') {
     return null
   }
@@ -143,14 +216,6 @@ const previewShip = computed(() => {
   }
 })
 
-// Chuột sát mép: lùi tàu vào trong cho vừa bàn (xem trước và lúc đặt dùng chung vị trí này)
-function fitOnBoard(r, c, len, vertical) {
-  return {
-    r: Math.min(r, 10 - (vertical ? len : 1)),
-    c: Math.min(c, 10 - (vertical ? 1 : len)),
-  }
-}
-
 function getPlacedShipAt(r, c) {
   for (const ship of placedShips.value) {
     const cells = getShipCells(ship.r, ship.c, ship.len, ship.vertical)
@@ -162,7 +227,7 @@ function getPlacedShipAt(r, c) {
 }
 
 function onPlaceBoardClick(r, c) {
-  if (phase.value !== 'placing') return
+  if (phase.value !== 'placing' || iAmPlaced.value) return
   // Nếu nhấn vào tàu đã đặt -> gỡ tàu ra để đặt lại
   const existingShip = getPlacedShipAt(r, c)
   if (existingShip) {
@@ -191,24 +256,25 @@ function onPlaceBoardClick(r, c) {
 }
 
 function removePlacedShip(shipName) {
+  if (iAmPlaced.value) return
   placedShips.value = placedShips.value.filter((s) => s.name !== shipName)
   const def = SHIP_DEFS.find((d) => d.name === shipName)
   if (def) selectShip(def)
 }
 
 function resetPlacement() {
+  if (iAmPlaced.value) return
   placedShips.value = []
   selectedDefIndex.value = 0
 }
 
 function confirmPlacement() {
-  if (placedShips.value.length !== 5) return
+  if (placedShips.value.length !== 5 || iAmPlaced.value) return
   placeShips(placedShips.value)
 }
 
-// Xếp ngẫu nhiên ngay trên bàn xếp tàu: bấm lại bao nhiêu lần cũng được, vẫn chỉnh tay được,
-// ưng ý thì bấm Xác nhận (máy chủ kiểm tra lại hạm đội).
 function handleAutoPlace() {
+  if (iAmPlaced.value) return
   for (let attempt = 0; attempt < 100; attempt++) {
     placedShips.value = []
     const ok = SHIP_DEFS.every((def) => {
@@ -226,7 +292,7 @@ function handleAutoPlace() {
     if (ok) return
   }
   placedShips.value = []
-  placeRandom() // gần như không xảy ra: nhờ máy chủ xếp
+  placeRandom()
 }
 
 // Bắn vào ô đối phương
@@ -327,6 +393,57 @@ function getMyCellState(r, c) {
   return { isHit, isMiss, isSunk }
 }
 
+// Người xem: hàm hỗ trợ lấy ô và tàu của từng bên
+function getSpectatorCellState(side, r, c) {
+  const b = room.value?.boards?.[String(side)]
+  if (!b) return null
+  const isHit = b.hits?.some(([hr, hc]) => hr === r && hc === c)
+  const isMiss = b.misses?.some(([mr, mc]) => mr === r && mc === c)
+  let isSunk = false
+  if (b.sunkShips) {
+    for (const ship of b.sunkShips) {
+      if (ship.cells?.some(([sr, sc]) => sr === r && sc === c)) {
+        isSunk = true
+        break
+      }
+    }
+  }
+  return { isHit, isMiss, isSunk }
+}
+
+function hasSpectatorVisibleShipAt(side, r, c) {
+  const b = room.value?.boards?.[String(side)]
+  if (!b) return false
+  const inSunk = (b.sunkShips || []).some((ship) =>
+    getShipCells(ship.r, ship.c, ship.len, ship.vertical).some(
+      (cell) => cell.r === r && cell.c === c
+    )
+  )
+  if (inSunk) return true
+  if (room.value?.winner && b.revealedShips) {
+    return b.revealedShips.some((ship) =>
+      getShipCells(ship.r, ship.c, ship.len, ship.vertical).some(
+        (cell) => cell.r === r && cell.c === c
+      )
+    )
+  }
+  return false
+}
+
+function getSpectatorSunkShips(side) {
+  return room.value?.boards?.[String(side)]?.sunkShips || []
+}
+
+function getSpectatorSurvivingShips(side) {
+  if (!room.value?.winner) return []
+  const b = room.value?.boards?.[String(side)]
+  if (!b?.revealedShips) return []
+  const sunkNames = new Set((b.sunkShips || []).map((s) => s.name))
+  return b.revealedShips.filter((s) => !sunkNames.has(s.name))
+}
+
+const player = (side) => room.value?.players?.[String(side)]
+
 // Thống kê phát bắn của người chơi
 const playerStats = computed(() => {
   if (!opponentBoard.value) return { shots: 0, hits: 0, accuracy: 0 }
@@ -355,32 +472,58 @@ const status = computed(() => {
   const r = room.value
   if (!r) return { text: '', tone: 'muted' }
   if (r.winner) {
-    const mine = r.winner === you.value
+    if (you.value) {
+      const mine = r.winner === you.value
+      return {
+        text: mine ? 'Bạn toàn thắng! 🎉 Tiêu diệt hạm đội địch' : 'Thất trận! Hạm đội của bạn đã chìm',
+        tone: mine ? 'green' : 'red',
+      }
+    }
+    const who = player(r.winner)
+    const name = who?.name ?? `Bên ${r.winner}`
     return {
-      text: mine ? 'Bạn toàn thắng! 🎉 Tiêu diệt hạm đội địch' : 'Thất trận! Hạm đội của bạn đã chìm',
-      tone: mine ? 'green' : 'red',
+      text: `${name} toàn thắng! 🎉`,
+      tone: 'green',
     }
   }
+  if (r.waiting) {
+    return { text: 'Đang chờ người chơi thứ hai…', tone: 'muted' }
+  }
   if (phase.value === 'placing') {
-    return {
-      text: 'Giai đoạn dàn quân: Xếp 5 tàu vào vị trí',
-      tone: 'blue',
+    if (!you.value) {
+      return { text: 'Đang chờ hai bên xếp hạm đội…', tone: 'muted' }
     }
+    if (iAmPlaced.value) {
+      return { text: 'Bạn đã xếp tàu xong, đang chờ đối thủ…', tone: 'blue' }
+    }
+    return { text: 'Giai đoạn dàn quân: Xếp 5 tàu vào vị trí', tone: 'blue' }
   }
   if (r.botThinking) {
     return { text: 'Bot đang ngắm bắn…', tone: 'blue' }
   }
   if (canShoot.value) {
-    return { text: 'Lượt của bạn — Khai hỏa!', tone: 'green' }
+    return { text: 'Lượt của bạn — bắn đi!', tone: 'green' }
   }
-  return { text: 'Lượt đối phương khai hỏa…', tone: 'muted' }
+  const curPlayer = player(r.current)
+  const curName = curPlayer?.name ?? `Bên ${r.current}`
+  return { text: `Lượt của ${curName}`, tone: 'muted' }
 })
 
 function handleNewGame() {
+  const r = room.value
+  if (!isBot.value && phase.value === 'playing' && r?.moves &&
+      !confirm('Trận chiến chưa kết thúc. Mở ván mới giữa trận sẽ bị tính là bạn thua (trừ Elo). Bạn chắc chắn?')) {
+    return
+  }
   restart()
 }
 
 function handleLeave() {
+  const r = room.value
+  if (!isBot.value && phase.value === 'playing' && r?.moves &&
+      !confirm('Trận chiến chưa kết thúc. Rời phòng giữa trận sẽ bị tính là bạn thua (trừ Elo). Bạn chắc chắn?')) {
+    return
+  }
   leaveRoom()
 }
 </script>
@@ -388,16 +531,19 @@ function handleLeave() {
 <template>
   <section v-if="room" class="game">
     <div class="board-wrap">
-      <!-- GIAI ĐOẠN 1: DÀN QUÂN / XẾP TÀU -->
-      <div v-if="phase === 'placing'" class="placing-container card">
+      <!-- GIAI ĐOẠN 1: DÀN QUÂN / XẾP TÀU (chỉ dành cho người chơi trong phòng) -->
+      <div v-if="phase === 'placing' && you" class="placing-container card">
         <div class="placing-header">
           <div class="placing-title">
             <h3>⚓ Bố trí hạm đội hải chiến</h3>
-            <p class="small muted">
+            <p v-if="!iAmPlaced" class="small muted">
               Nhấn ô để đặt tàu. Nhấn tàu đã đặt để gỡ ra. Phím <kbd>R</kbd> hoặc nút xoay để đổi hướng. Tàu được phép nằm sát nhau.
             </p>
+            <p v-else class="small ready">
+              ✓ Bạn đã xác nhận hạm đội! Đang chờ đối thủ xếp tàu xong…
+            </p>
           </div>
-          <div class="placing-actions">
+          <div v-if="!iAmPlaced" class="placing-actions">
             <button class="btn" @click="toggleOrientation">
               {{ isVertical ? '↕ Dọc' : '↔ Ngang' }} (Phím R)
             </button>
@@ -416,7 +562,7 @@ function handleLeave() {
         <div class="placing-body">
           <!-- Bàn cờ đặt tàu 10x10 -->
           <div class="sea-board-wrapper">
-            <div class="sea-board">
+            <div class="sea-board" :class="{ 'board-disabled': iAmPlaced }">
               <!-- Hàng nhãn cột A-J -->
               <div class="sea-corner"></div>
               <div v-for="(col, c) in COLS" :key="col" class="sea-header-col" :class="`c-${c}`">{{ col }}</div>
@@ -427,11 +573,14 @@ function handleLeave() {
                 <div
                   v-for="(colName, c) in COLS"
                   :key="colName"
-                  class="sea-cell clickable"
+                  class="sea-cell"
                   :class="[
                     `r-${r}`,
                     `c-${c}`,
-                    { 'cell-over-ship': hasShipAtPlacing(r, c) }
+                    {
+                      clickable: !iAmPlaced,
+                      'cell-over-ship': hasShipAtPlacing(r, c)
+                    }
                   ]"
                   @mouseenter="hoverPos = { r, c }"
                   @mouseleave="hoverPos = null"
@@ -484,10 +633,10 @@ function handleLeave() {
               :key="def.name"
               class="ship-card"
               :class="{
-                active: selectedShipDef?.name === def.name,
+                active: selectedShipDef?.name === def.name && !iAmPlaced,
                 placed: placedShips.some((s) => s.name === def.name),
               }"
-              @click="selectShip(def)"
+              @click="!iAmPlaced && selectShip(def)"
             >
               <div class="ship-info">
                 <strong>{{ def.name }}</strong>
@@ -501,7 +650,7 @@ function handleLeave() {
                 />
               </div>
               <button
-                v-if="placedShips.some((s) => s.name === def.name)"
+                v-if="!iAmPlaced && placedShips.some((s) => s.name === def.name)"
                 class="btn small"
                 @click.stop="removePlacedShip(def.name)"
               >
@@ -512,8 +661,16 @@ function handleLeave() {
         </div>
       </div>
 
-      <!-- GIAI ĐOẠN 2 & 3: KHAI HỎA / KẾT THÚC -->
-      <div v-else class="battle-container">
+      <!-- NGƯỜI XEM TRONG GIAI ĐOẠN XẾP TÀU -->
+      <div v-else-if="phase === 'placing' && !you" class="card placing-spectator">
+        <h3>⚓ Giai đoạn xếp tàu</h3>
+        <p class="muted">
+          Hai bên đang tiến hành bố trí hạm đội vào vùng biển bí mật. Trận chiến sẽ bắt đầu khi cả hai bên sẵn sàng.
+        </p>
+      </div>
+
+      <!-- GIAI ĐOẠN 2 & 3: KHAI HỎA / KẾT THÚC CHO NGƯỜI CHƠI -->
+      <div v-else-if="you" class="battle-container">
         <!-- Vùng biển đối phương (mục tiêu bắn) -->
         <div class="card battle-panel">
           <div class="panel-header">
@@ -646,6 +803,123 @@ function handleLeave() {
           </div>
         </div>
       </div>
+
+      <!-- NGƯỜI XEM KHI ĐANG CHƠI HOẶC KẾT THÚC -->
+      <div v-else class="battle-container">
+        <!-- Bàn của bên 1 -->
+        <div class="card battle-panel">
+          <div class="panel-header">
+            <h3>⚓ Vùng biển của {{ player(1)?.name || 'Bên 1' }}</h3>
+          </div>
+          <div class="sea-board-wrapper">
+            <div class="sea-board board-disabled">
+              <div class="sea-corner"></div>
+              <div v-for="(col, c) in COLS" :key="col" class="sea-header-col" :class="`c-${c}`">{{ col }}</div>
+              <template v-for="(rowNum, r) in ROWS" :key="rowNum">
+                <div class="sea-header-row" :class="`r-${r}`">{{ rowNum }}</div>
+                <div
+                  v-for="(colName, c) in COLS"
+                  :key="colName"
+                  class="sea-cell"
+                  :class="[
+                    `r-${r}`,
+                    `c-${c}`,
+                    {
+                      'cell-over-ship': hasSpectatorVisibleShipAt(1, r, c),
+                      'cell-hit': getSpectatorCellState(1, r, c)?.isHit,
+                      'cell-miss': getSpectatorCellState(1, r, c)?.isMiss,
+                      'cell-last-shot': lastShot?.side === 2 && lastShot?.r === r && lastShot?.c === c,
+                    }
+                  ]"
+                >
+                  <span v-if="getSpectatorCellState(1, r, c)?.isSunk" class="hit-icon">💥</span>
+                  <span v-else-if="getSpectatorCellState(1, r, c)?.isHit" class="hit-icon">🔥</span>
+                  <span v-else-if="getSpectatorCellState(1, r, c)?.isMiss" class="miss-icon">•</span>
+                </div>
+              </template>
+              <div
+                v-for="ship in getSpectatorSunkShips(1)"
+                :key="ship.name"
+                class="sea-ship"
+                :style="{
+                  gridColumn: `${ship.c + 2} / span ${ship.vertical ? 1 : ship.len}`,
+                  gridRow: `${ship.r + 2} / span ${ship.vertical ? ship.len : 1}`
+                }"
+              >
+                <BattleshipShip :name="ship.name" :len="ship.len" :vertical="ship.vertical" state="sunk" />
+              </div>
+              <div
+                v-for="ship in getSpectatorSurvivingShips(1)"
+                :key="ship.name"
+                class="sea-ship sea-ship-revealed"
+                :style="{
+                  gridColumn: `${ship.c + 2} / span ${ship.vertical ? 1 : ship.len}`,
+                  gridRow: `${ship.r + 2} / span ${ship.vertical ? ship.len : 1}`
+                }"
+              >
+                <BattleshipShip :name="ship.name" :len="ship.len" :vertical="ship.vertical" state="normal" />
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Bàn của bên 2 -->
+        <div class="card battle-panel">
+          <div class="panel-header">
+            <h3>⚓ Vùng biển của {{ player(2)?.name || 'Bên 2' }}</h3>
+          </div>
+          <div class="sea-board-wrapper">
+            <div class="sea-board board-disabled">
+              <div class="sea-corner"></div>
+              <div v-for="(col, c) in COLS" :key="col" class="sea-header-col" :class="`c-${c}`">{{ col }}</div>
+              <template v-for="(rowNum, r) in ROWS" :key="rowNum">
+                <div class="sea-header-row" :class="`r-${r}`">{{ rowNum }}</div>
+                <div
+                  v-for="(colName, c) in COLS"
+                  :key="colName"
+                  class="sea-cell"
+                  :class="[
+                    `r-${r}`,
+                    `c-${c}`,
+                    {
+                      'cell-over-ship': hasSpectatorVisibleShipAt(2, r, c),
+                      'cell-hit': getSpectatorCellState(2, r, c)?.isHit,
+                      'cell-miss': getSpectatorCellState(2, r, c)?.isMiss,
+                      'cell-last-shot': lastShot?.side === 1 && lastShot?.r === r && lastShot?.c === c,
+                    }
+                  ]"
+                >
+                  <span v-if="getSpectatorCellState(2, r, c)?.isSunk" class="hit-icon">💥</span>
+                  <span v-else-if="getSpectatorCellState(2, r, c)?.isHit" class="hit-icon">🔥</span>
+                  <span v-else-if="getSpectatorCellState(2, r, c)?.isMiss" class="miss-icon">•</span>
+                </div>
+              </template>
+              <div
+                v-for="ship in getSpectatorSunkShips(2)"
+                :key="ship.name"
+                class="sea-ship"
+                :style="{
+                  gridColumn: `${ship.c + 2} / span ${ship.vertical ? 1 : ship.len}`,
+                  gridRow: `${ship.r + 2} / span ${ship.vertical ? ship.len : 1}`
+                }"
+              >
+                <BattleshipShip :name="ship.name" :len="ship.len" :vertical="ship.vertical" state="sunk" />
+              </div>
+              <div
+                v-for="ship in getSpectatorSurvivingShips(2)"
+                :key="ship.name"
+                class="sea-ship sea-ship-revealed"
+                :style="{
+                  gridColumn: `${ship.c + 2} / span ${ship.vertical ? 1 : ship.len}`,
+                  gridRow: `${ship.r + 2} / span ${ship.vertical ? ship.len : 1}`
+                }"
+              >
+                <BattleshipShip :name="ship.name" :len="ship.len" :vertical="ship.vertical" state="normal" />
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
 
     <!-- CỘT BÊN PHẢI (ASIDE 320px) -->
@@ -657,8 +931,48 @@ function handleLeave() {
         <span>{{ room.notice }}</span>
       </div>
 
+      <!-- Danh sách người chơi (giống cờ tướng) -->
+      <ul class="players">
+        <li v-for="side in [1, 2]" :key="side" :class="{ turn: phase === 'playing' && room.current === side }">
+          <span class="dot" :class="side === 1 ? 'blue' : 'red'">{{ side }}</span>
+          <span class="pname">
+            {{ player(side)?.name ?? 'Đang chờ…' }}
+            <em v-if="side === you" class="small muted">(bạn)</em>
+          </span>
+          <span v-if="phase === 'placing'" class="placed-status small">
+            <template v-if="room.placed?.includes(side) || room.ready?.includes(side)">
+              <span class="ready">✓ Đã xếp</span>
+            </template>
+            <template v-else-if="player(side)">
+              <span class="muted">Đang xếp…</span>
+            </template>
+          </span>
+          <span
+            v-if="turnLeft != null && phase === 'playing' && room.current === side"
+            class="clock"
+            :class="{ low: turnLeft <= 10 }"
+            :title="`Mỗi lượt ${room.turnSeconds || 30} giây`"
+          >
+            ⏱ {{ turnLeft }}s
+          </span>
+          <span v-if="player(side)?.elo != null" class="elo small">
+            {{ player(side).elo }}
+            <b v-if="player(side).eloDelta" :class="player(side).eloDelta > 0 ? 'up' : 'down'">
+              {{ player(side).eloDelta > 0 ? '+' : '' }}{{ player(side).eloDelta }}
+            </b>
+          </span>
+          <span
+            v-if="player(side) && !player(side).bot"
+            class="online"
+            :class="{ off: !player(side).online }"
+            :title="player(side).online ? 'Đang kết nối' : 'Mất kết nối'"
+          ></span>
+        </li>
+      </ul>
+      <p v-if="!you" class="small muted">Bạn đang xem ván này.</p>
+
       <!-- Tình trạng hạm đội đối phương -->
-      <div class="fleet-status-block">
+      <div v-if="you" class="fleet-status-block">
         <h4>Hạm đội đối thủ</h4>
         <ul class="fleet-list">
           <li
@@ -683,7 +997,7 @@ function handleLeave() {
       </div>
 
       <!-- Tình trạng hạm đội người chơi -->
-      <div class="fleet-status-block">
+      <div v-if="you" class="fleet-status-block">
         <h4>Hạm đội của bạn</h4>
         <ul class="fleet-list">
           <li
@@ -707,14 +1021,29 @@ function handleLeave() {
         </ul>
       </div>
 
-      <!-- Thống kê phát bắn -->
-      <dl v-if="phase !== 'placing'" class="meta small">
+      <!-- Thống kê phát bắn của bạn (chỉ hiện khi chơi) -->
+      <dl v-if="you && phase !== 'placing'" class="meta small">
         <div><dt>Tổng phát bắn</dt><dd><strong>{{ playerStats.shots }}</strong></dd></div>
         <div><dt>Bắn trúng</dt><dd><strong>{{ playerStats.hits }}</strong></dd></div>
         <div><dt>Độ chính xác</dt><dd><strong>{{ playerStats.accuracy }}%</strong></dd></div>
-        <div><dt>Độ khó bot</dt><dd>{{ room.levelName || 'Vừa' }}</dd></div>
-        <div><dt>Phòng</dt><dd><strong>{{ room.code }}</strong></dd></div>
       </dl>
+
+      <dl class="meta small">
+        <div><dt>Phòng</dt><dd><strong>{{ room.code }}</strong></dd></div>
+        <div><dt>Bàn cờ</dt><dd>10 hàng × 10 cột</dd></div>
+        <div v-if="isBot"><dt>Độ khó bot</dt><dd>{{ room.levelName || 'Vừa' }}</dd></div>
+        <div v-else><dt>Chế độ</dt><dd>Đấu người qua LAN</dd></div>
+        <div><dt>Đã bắn</dt><dd>{{ room.moves || 0 }} phát</dd></div>
+      </dl>
+
+      <!-- Link mời qua LAN -->
+      <div v-if="!isBot" class="invite">
+        <span class="small muted">Gửi link này cho bạn cùng mạng LAN:</span>
+        <div class="row">
+          <input class="input small" readonly :value="inviteLink" @focus="$event.target.select()" />
+          <button class="btn blue" @click="copyLink">{{ copied ? 'Đã chép' : 'Chép' }}</button>
+        </div>
+      </div>
 
       <!-- Các nút thao tác -->
       <div class="actions">
@@ -726,7 +1055,11 @@ function handleLeave() {
         </button>
       </div>
 
-      <p class="small muted">
+      <p v-if="!isBot && you" class="small muted">
+        Ván đấu người được tính elo. Mỗi lượt có {{ room.turnSeconds || 30 }} giây; hết giờ, rời phòng hoặc
+        bấm "Ván mới" khi ván chưa xong thì bị tính thua. Bắn trúng được bắn tiếp. Sau mỗi ván hai bên đổi bên.
+      </p>
+      <p v-else-if="isBot" class="small muted">
         Bắn trúng hoặc đánh chìm tàu được bắn tiếp! Bắn trượt sẽ mất lượt.
       </p>
     </aside>
@@ -776,10 +1109,109 @@ function handleLeave() {
   text-align: center;
 }
 
+/* DANH SÁCH NGƯỜI CHƠI */
+.players {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+
+.players li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  border: 1px solid var(--panel-border);
+}
+
+.players li.turn {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent) inset;
+}
+
+.dot {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  color: #fff;
+  font-weight: 700;
+  font-size: 0.8rem;
+  flex: none;
+}
+
+.dot.blue { background: var(--blue); }
+.dot.red { background: var(--red); }
+
+.pname {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.placed-status {
+  white-space: nowrap;
+}
+
+.ready {
+  color: var(--green);
+  font-weight: 700;
+}
+
+.clock {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.clock.low {
+  color: var(--red);
+}
+
+.elo {
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.elo .up { color: var(--green); }
+.elo .down { color: var(--red); }
+
+.online {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: #2fae62;
+  flex: none;
+}
+
+.online.off {
+  background: #b9b2a6;
+}
+
+.invite {
+  display: grid;
+  gap: 6px;
+}
+
+.invite .row > .btn {
+  flex: none;
+}
+
 /* KHUNG ĐẶT TÀU */
 .placing-container {
   display: grid;
   gap: 16px;
+}
+
+.placing-spectator {
+  text-align: center;
+  padding: 32px 16px;
 }
 
 .placing-header {
@@ -876,7 +1308,6 @@ function handleLeave() {
   padding: 6px;
   border-radius: 10px;
   user-select: none;
-  isolation: isolate; /* z-index của tàu và dấu bắn chỉ xếp lớp trong bàn */
 }
 
 /* Gán cố định hàng/cột trong grid để không bao giờ bị trôi vị trí khi có phần tử tàu */
@@ -943,8 +1374,6 @@ function handleLeave() {
   display: flex;
   align-items: center;
   justify-content: center;
-  /* Không z-index: ô không tạo lớp riêng, nên tàu (z 1) nằm TRÊN nền ô
-     còn dấu trúng/trượt (z 3) nằm trên tàu. */
   position: relative;
   transition: background-color 0.1s;
 }
@@ -984,8 +1413,6 @@ function handleLeave() {
   min-height: 0;
 }
 
-/* SVG phủ đúng vùng ô của tàu nhưng không có kích thước riêng:
-   nếu không, tỉ lệ ảnh (cộng cả khe giữa các ô) làm hàng giãn ra vài px, bàn bị nhảy. */
 .sea-ship > .battleship-svg {
   position: absolute;
   inset: 0;

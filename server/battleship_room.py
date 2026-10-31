@@ -20,7 +20,7 @@ from server.game import (
 
 
 class BattleshipRoom(Room):
-    """Phòng chơi Hải chiến (Battleship 10x10). Đợt 1 chỉ hỗ trợ chế độ đấu với máy (bot)."""
+    """Phòng chơi Hải chiến (Battleship 10x10), hỗ trợ đấu máy và đấu người qua mạng LAN."""
 
     game_type = "battleship"
 
@@ -31,8 +31,8 @@ class BattleshipRoom(Room):
         level: int = 1,
         human_side: int = 1,
     ):
-        if mode != "bot":
-            raise GameError("Hải chiến hiện chỉ có chế độ đấu với máy.")
+        if mode not in ("pvp", "bot"):
+            raise GameError("Chế độ chơi không hợp lệ.")
 
         try:
             level = int(level)
@@ -65,16 +65,17 @@ class BattleshipRoom(Room):
     def new_game(self):
         self.phase = "placing"  # "placing" | "playing" | "ended"
         self.fleets: dict[int, Fleet | None] = {1: None, 2: None}
-        # Bot xếp hạm đội ngẫu nhiên ngay khi tạo ván
-        self.fleets[self.bot_side] = Fleet(random_fleet())
+        # Đấu máy: bot xếp hạm đội ngẫu nhiên ngay khi tạo ván
+        if self.bot_side:
+            self.fleets[self.bot_side] = Fleet(random_fleet())
 
         self.history: list[tuple[int, int, int]] = []  # (r, c, side)
         self.current = 1  # Bên 1 luôn đi trước
         self.winner = 0
         self.win_line = []
         self.request = None
-        self.ready = set()
-        self.started = False  # Bắt đầu khi người chơi xếp tàu xong
+        self.ready = set()  # Tập các bên đã xếp xong hạm đội
+        self.started = False  # Bắt đầu khi cả hai bên xếp xong
         self.rated = False
         self.notice = "Xếp 5 tàu của bạn rồi bấm Xác nhận để bắt đầu trận chiến."
         self._clock_key = None
@@ -92,10 +93,12 @@ class BattleshipRoom(Room):
         """Người chơi xếp hạm đội. ships = None là xếp ngẫu nhiên giúp."""
         if side is None:
             raise GameError("Người xem không thể xếp tàu.")
+        if side not in (1, 2):
+            raise GameError("Bên chơi không hợp lệ.")
         if self.phase != "placing":
             raise GameError("Đã qua giai đoạn xếp tàu.")
-        if side != self.human_side:
-            raise GameError("Chỉ người chơi mới có thể xếp tàu.")
+        if side in self.ready or self.fleets[side] is not None:
+            raise GameError("Bạn đã xếp tàu xong, đang chờ đối thủ.")
 
         if ships is None:
             ships = random_fleet()
@@ -106,12 +109,33 @@ class BattleshipRoom(Room):
             raise GameError(str(exc)) from exc
 
         self.fleets[side] = fleet
-        self.phase = "playing"
-        self.started = True
-        if self.current == self.human_side:
-            self.notice = "Trận chiến bắt đầu! Đến lượt bạn bắn."
+        self.ready.add(side)
+
+        if self.mode == "bot":
+            self.phase = "playing"
+            self.started = True
+            if self.current == self.human_side:
+                self.notice = "Trận chiến bắt đầu! Đến lượt bạn bắn."
+            else:
+                self.notice = "Trận chiến bắt đầu! Bot bắn trước."
         else:
-            self.notice = "Trận chiến bắt đầu! Bot bắn trước."
+            # Chế độ đấu người (pvp)
+            if len(self.ready) == 2 and not self.waiting:
+                self.phase = "playing"
+                self.started = True
+                p1 = self.seats.get(1)
+                p1_name = p1.name if p1 else "Bên 1"
+                self.notice = f"Trận chiến bắt đầu! Lượt của {p1_name} bắn."
+            else:
+                self.notice = "Bạn đã xếp tàu xong, đang chờ đối thủ..."
+
+    def seat_freed(self, side: int):
+        """Một người rời phòng: nếu chưa có phát bắn nào thì reset tàu của bên đó."""
+        self.ready.discard(side)
+        if not self.history and self.winner == 0:
+            self.fleets[side] = None
+            self.phase = "placing"
+            self.started = False
 
     def fire(self, side: int, r: int, c: int):
         if self.winner != 0:
@@ -156,13 +180,17 @@ class BattleshipRoom(Room):
             self.notice = f"{shooter_name} đã đánh chìm toàn bộ hạm đội đối phương! {shooter_name} thắng!"
         else:
             if res["result"] == "miss":
-                self.notice = "Trượt."
+                self.notice = f"{shooter_name} bắn trượt." if self.mode == "pvp" else "Trượt."
                 self.current = 3 - side  # Đổi lượt khi bắn trượt
             elif res["result"] == "hit":
-                self.notice = "Trúng! Bắn tiếp."  # Bắn trúng được bắn tiếp
+                self.notice = f"{shooter_name} bắn trúng! Bắn tiếp." if self.mode == "pvp" else "Trúng! Bắn tiếp."
             elif res["result"] == "sunk":
                 ship_name = res["ship"]
-                self.notice = f"Đánh chìm {ship_name}! Bắn tiếp."  # Đánh chìm được bắn tiếp
+                self.notice = (
+                    f"{shooter_name} đánh chìm {ship_name}! Bắn tiếp."
+                    if self.mode == "pvp"
+                    else f"Đánh chìm {ship_name}! Bắn tiếp."
+                )
 
     def undo(self, side: int):
         raise GameError("Hải chiến không có đi lại.")
@@ -170,7 +198,32 @@ class BattleshipRoom(Room):
     def restart(self, side: int):
         if side is None:
             raise GameError("Người xem không mở được ván mới.")
+        if self.mode == "pvp" and self.history:
+            self.seats[1], self.seats[2] = self.seats[2], self.seats[1]
         self.new_game()
+
+    def timeout(self):
+        loser = self.current
+        self.winner, self.win_line, self.request = 3 - loser, [], None
+        self.phase = "ended"
+        loser_seat = self.seats.get(loser)
+        loser_name = loser_seat.name if loser_seat else f"Bên {loser}"
+        self.notice = f"{loser_name} hết thời gian, bị tính thua."
+
+    def forfeit(self, side: int, reason: str):
+        """Bỏ ván đấu người đang dở: bên bỏ bị tính thua."""
+        if (
+            side is not None
+            and self.mode == "pvp"
+            and self.winner == 0
+            and not self.waiting
+            and self.history
+        ):
+            self.winner, self.win_line, self.request = 3 - side, [], None
+            self.phase = "ended"
+            seat = self.seats.get(side)
+            name = seat.name if seat else f"Bên {side}"
+            self.notice = f"{name} {reason}, bị tính thua."
 
     def bot_view(self) -> dict[str, Any]:
         """Tạo góc nhìn bí mật cho bot (không đọc vị trí tàu chưa chìm của người)."""
@@ -218,9 +271,16 @@ class BattleshipRoom(Room):
 
         def get_ships_left(fleet: Fleet | None) -> list[dict]:
             if fleet is None:
-                return [{"name": name, "len": length, "sunk": False} for name, length in [
-                    ("Tàu sân bay", 5), ("Thiết giáp hạm", 4), ("Tuần dương hạm", 3), ("Tàu ngầm", 3), ("Khu trục hạm", 2)
-                ]]
+                return [
+                    {"name": name, "len": length, "sunk": False}
+                    for name, length in [
+                        ("Tàu sân bay", 5),
+                        ("Thiết giáp hạm", 4),
+                        ("Tuần dương hạm", 3),
+                        ("Tàu ngầm", 3),
+                        ("Khu trục hạm", 2),
+                    ]
+                ]
             sunk_names = {s["name"] for s in fleet.sunk_ships}
             res = []
             for s in fleet.ships:
@@ -231,15 +291,15 @@ class BattleshipRoom(Room):
                 })
             return res
 
-        # Xây dựng dữ liệu bàn của mình và bàn đối thủ
         my_fleet_data = None
         opponent_board_data = None
+        boards_data = None
 
         if you_side in (1, 2):
             my_fleet = self.fleets[you_side]
             opp_fleet = self.fleets[3 - you_side]
 
-            # Bàn của mình: vị trí tàu của mình + các phát bắn đối thủ đã bắn vào mình
+            # Bàn của mình: vị trí tàu của mình + các phát đối thủ đã bắn vào mình
             if my_fleet is not None:
                 my_fleet_data = {
                     "ships": my_fleet.ships,
@@ -259,7 +319,15 @@ class BattleshipRoom(Room):
                 }
         else:
             # Người xem: chỉ thấy các phát bắn và tàu đã chìm, không thấy tàu chưa chìm của ai
-            pass
+            boards_data = {}
+            for s in (1, 2):
+                fl = self.fleets[s]
+                boards_data[str(s)] = {
+                    "hits": list(fl.hits) if fl else [],
+                    "misses": list(fl.misses) if fl else [],
+                    "sunkShips": fl.sunk_ships if fl else [],
+                    "revealedShips": fl.ships if (self.winner != 0 and fl) else [],
+                }
 
         return {
             "code": self.code,
@@ -276,6 +344,8 @@ class BattleshipRoom(Room):
             "winLine": [],
             "myFleet": my_fleet_data,
             "opponentBoard": opponent_board_data,
+            "boards": boards_data,
+            "placed": sorted(self.ready),
             "lastShot": self.last_shot,
             "shipsLeft": {
                 "1": get_ships_left(fleet_1),

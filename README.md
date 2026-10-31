@@ -6,7 +6,7 @@ Project có kèm bản desktop (pygame) dùng chung engine.
 
 - **Tài khoản:** đăng ký/đăng nhập, lưu trong SQLite (`data/caro.db`). Tài khoản mới phải
   được admin phê duyệt mới đăng nhập được. Bấm vào tên mình trên thanh tiêu đề để đổi mật khẩu.
-  Đăng nhập xong thì chọn trò chơi: cờ caro, cờ vây hoặc cờ tướng.
+  Đăng nhập xong thì chọn trò chơi: cờ caro, cờ vây, cờ tướng, dò mìn, sudoku hoặc hải chiến.
 - **Cờ tướng:** hỗ trợ cả đấu người qua LAN và đấu với máy (3 mức: Dễ 0,5 giây, Vừa 1,5 giây, Khó 4 giây mỗi nước;
   bot alpha-beta). Đấu người dùng chung sẵn sàng, đồng hồ 30 giây, tính elo, xin đi lại. Đủ luật: cản chân Mã,
   cản mắt Tượng, Pháo ăn qua ngòi, lộ mặt tướng; hết nước đi là thua, lặp thế cờ 3 lần là hòa (chưa có luật cấm chiếu mãi, đuổi mãi).
@@ -20,9 +20,10 @@ Project có kèm bản desktop (pygame) dùng chung engine.
   bảng xếp hạng thành tích thời gian tốt nhất của các tài khoản.
 - **Hải chiến (Battleship):** bàn 10×10 mỗi bên, hạm đội 5 tàu (Tàu sân bay 5 ô, Thiết giáp hạm 4 ô,
   Tuần dương hạm 3 ô, Tàu ngầm 3 ô, Khu trục hạm 2 ô). Xếp tàu tự do (được phép nằm sát nhau), bắn trúng hoặc đánh chìm
-  thì được bắn tiếp, bắn trượt mất lượt. Đợt 1 hỗ trợ đấu máy 3 mức: Dễ (bắn ngẫu nhiên + quét lân cận),
-  Vừa (quét bàn cờ ô chẵn lẻ + theo trục), Khó (bản đồ mật độ xác suất và truy kích cụm tàu).
-  Cơ chế chống lộ thông tin: client chỉ nhận phát bắn và tàu đối phương đã chìm; vị trí tàu chưa chìm chỉ mở khi ván kết thúc.
+  thì được bắn tiếp, bắn trượt mất lượt. Hỗ trợ cả đấu người qua LAN và đấu với máy:
+  - Đấu máy 3 mức: Dễ (bắn ngẫu nhiên + quét lân cận), Vừa (quét bàn cờ ô chẵn lẻ + theo trục), Khó (bản đồ mật độ xác suất và truy kích cụm tàu).
+  - Đấu người qua LAN: mỗi bên tự xếp hạm đội bí mật; cả hai xếp xong ván bắt đầu (Bên 1 bắn trước). Đồng hồ 30 giây mỗi lượt, tính elo, đổi bên khi ván mới, tự xử thua khi rời phòng/hết giờ giữa ván; người xem thấy 2 bàn cờ song song.
+  - Cơ chế chống lộ thông tin: client chỉ nhận phát bắn và tàu đối phương đã chìm; vị trí tàu chưa chìm chỉ mở khi ván kết thúc.
 - **Quản trị:** tài khoản admin khai báo trong `.env`. Trang Quản trị: duyệt/từ chối đăng ký,
   xem người dùng, nâng lên admin, đặt lại mật khẩu (sinh ngẫu nhiên), reset elo, xóa tài khoản.
 - **Đấu máy:** 3 mức độ khó (Nhanh 2 giây, Mạnh 5 giây, Chuyên gia 12 giây mỗi nước).
