@@ -5,10 +5,12 @@ Ghế trong phòng gắn với tài khoản, nên tải lại trang hay đổi m
 
 Giao thức WebSocket (/ws), mọi tin nhắn là JSON có trường "type":
   client -> server
-    create      {game: "caro"|"go"|"xiangqi", mode: "pvp"|"bot", rows, cols, strict, level, side, size, komi}
+    create      {game: "caro"|"go"|"xiangqi"|"battleship", mode: "pvp"|"bot", rows, cols, strict, level, side, size, komi}
     join        {room}
     move        {r, c}                    caro / cờ vây
     move_piece  {fr, fc, tr, tc}          cờ tướng
+    place_ships {ships | random: true}    hải chiến
+    fire        {r, c}                    hải chiến
     pass        {}                        cờ vây
     undo        {}                        đấu người: thành yêu cầu, chờ đối thủ đồng ý
     restart     {}                        đấu người, ván đang dở: người bấm bị tính thua
@@ -41,8 +43,11 @@ from go_game import BLACK, GO_LEVELS, GO_SIZES, WHITE
 from minesweeper_game import MINES_LEVELS
 from sudoku_game import SUDOKU_LEVELS, SudokuGame, generate as generate_sudoku
 from xiangqi_game import RED as XIANGQI_RED, XIANGQI_LEVELS
+from battleship_game import BATTLESHIP_LEVELS
 
 from . import auth, mines, sudoku
+from .battleship_bot import BattleshipBotDriver
+from .battleship_room import BattleshipRoom
 from .bot import BotDriver
 from .game import MAX_SIZE, MIN_SIZE, GameError, Room, new_code
 from .go_bot import GoBotDriver
@@ -74,6 +79,15 @@ class Hub:
         loop = asyncio.get_running_loop()
         code = new_code(self.rooms)
         game_type = msg.get("game", "caro")
+        if game_type == "battleship":
+            room = BattleshipRoom(code, msg.get("mode"),
+                                  level=msg.get("level", 1),
+                                  human_side=msg.get("side", 1))
+            self.rooms[code] = room
+            self.clients[code] = set()
+            if room.mode == "bot":
+                self.bots[code] = BattleshipBotDriver(room, loop, lambda: self.publish(code))
+            return self.join(client, room, prefer=msg.get("side", 1))
         if game_type == "xiangqi":
             room = XiangqiRoom(code, msg.get("mode"),
                                level=msg.get("level", 1),
@@ -367,6 +381,8 @@ def info():
                      for i, (name, seconds) in enumerate(GO_LEVELS)],
         "xiangqiLevels": [{"id": i, "name": name, "seconds": seconds}
                           for i, (name, seconds) in enumerate(XIANGQI_LEVELS)],
+        "battleshipLevels": [{"id": i, "name": name, "seconds": seconds}
+                             for i, (name, seconds) in enumerate(BATTLESHIP_LEVELS)],
         "goSizes": list(GO_SIZES),
         "minesLevels": [{"id": k, "name": name, "rows": r, "cols": c, "mines": m}
                         for k, (name, r, c, m) in MINES_LEVELS.items()],
@@ -578,12 +594,25 @@ async def handle(client, msg):
     if kind == "move":
         if getattr(room, "game_type", "") == "xiangqi":
             raise GameError("Phòng cờ tướng dùng lệnh di chuyển quân (move_piece).")
+        if getattr(room, "game_type", "") == "battleship":
+            raise GameError("Phòng hải chiến dùng lệnh bắn (fire).")
         room.place(side, msg.get("r"), msg.get("c"))
         hub.changed(room)
     elif kind == "move_piece":
         if getattr(room, "game_type", "") != "xiangqi" or not hasattr(room, "move"):
             raise GameError("Phòng này không phải cờ tướng.")
         room.move(side, msg.get("fr"), msg.get("fc"), msg.get("tr"), msg.get("tc"))
+        hub.changed(room)
+    elif kind == "place_ships":
+        if getattr(room, "game_type", "") != "battleship" or not hasattr(room, "place_ships"):
+            raise GameError("Phòng này không phải hải chiến.")
+        ships = None if msg.get("random") is True else msg.get("ships")
+        room.place_ships(side, ships)
+        hub.changed(room)
+    elif kind == "fire":
+        if getattr(room, "game_type", "") != "battleship" or not hasattr(room, "fire"):
+            raise GameError("Phòng này không phải hải chiến.")
+        room.fire(side, msg.get("r"), msg.get("c"))
         hub.changed(room)
     elif kind == "pass":
         if hasattr(room, "pass_turn"):

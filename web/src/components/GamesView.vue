@@ -8,6 +8,7 @@ const GAMES = [
   { id: 'xiangqi', name: 'Cờ tướng', icon: '帥將', desc: 'Đấu trí trên chiến trường Hán - Sở. Đấu với máy các cấp độ từ Dễ đến Khó.' },
   { id: 'minesweeper', name: 'Dò mìn', icon: '💣', desc: 'Dò tìm và cắm cờ toàn bộ bãi mìn kiểu Windows cổ điển. Bảng xếp hạng thời gian.' },
   { id: 'sudoku', name: 'Sudoku', icon: '🔢', desc: 'Điền các chữ số 1–9 vào bảng 9×9 sao cho không trùng hàng, cột và khối 3×3. Bảng xếp hạng.' },
+  { id: 'battleship', name: 'Hải chiến', icon: '🚢', desc: 'Bố trí 5 chiến hạm và truy quét hạm đội đối phương trên biển 10×10. Bắn trúng được bắn tiếp.' },
 ]
 </script>
 

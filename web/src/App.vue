@@ -11,6 +11,8 @@ import XiangqiLobbyView from './components/XiangqiLobbyView.vue'
 import XiangqiGameView from './components/XiangqiGameView.vue'
 import MinesweeperView from './components/MinesweeperView.vue'
 import SudokuView from './components/SudokuView.vue'
+import BattleshipLobbyView from './components/BattleshipLobbyView.vue'
+import BattleshipGameView from './components/BattleshipGameView.vue'
 import AdminView from './components/AdminView.vue'
 import PasswordView from './components/PasswordView.vue'
 
@@ -20,6 +22,7 @@ const TITLES = {
   xiangqi: 'CỜ TƯỚNG · XIANGQI',
   minesweeper: 'DÒ MÌN · MINESWEEPER',
   sudoku: 'SUDOKU',
+  battleship: 'HẢI CHIẾN · BATTLESHIP',
   admin: 'QUẢN TRỊ',
   password: 'TÀI KHOẢN',
 }
@@ -77,6 +80,11 @@ onMounted(checkSession)
     </template>
     <template v-else-if="state.game === 'sudoku'">
       <SudokuView />
+    </template>
+    <template v-else-if="state.game === 'battleship'">
+      <BattleshipGameView v-if="state.code && state.room" />
+      <div v-else-if="state.code" class="loading muted">Đang vào phòng hải chiến {{ state.code }}…</div>
+      <BattleshipLobbyView v-else />
     </template>
     <AdminView v-else-if="state.game === 'admin' && state.user.isAdmin" />
     <PasswordView v-else-if="state.game === 'password'" />

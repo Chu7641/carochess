@@ -1377,4 +1377,235 @@ def test_sudoku_delete_user_clears_scores(client):
     assert len(lb_after["top"]) == 0
 
 
+# ---------- HẢI CHIẾN (BATTLESHIP) ----------
+def test_battleship_room_mode_and_settings():
+    from server.battleship_room import BattleshipRoom
+    with pytest.raises(GameError):
+        BattleshipRoom("BS", "invalid")
+    with pytest.raises(GameError):
+        BattleshipRoom("BS", "pvp")
+    with pytest.raises(GameError):
+        BattleshipRoom("BS", "bot", level=99)
+    with pytest.raises(GameError):
+        BattleshipRoom("BS", "bot", human_side=99)
+
+    room = BattleshipRoom("BS", "bot", level=1, human_side=1)
+    snap = room.snapshot()
+    assert snap["game"] == "battleship"
+    assert snap["phase"] == "placing"
+    assert snap["rows"] == 10 and snap["cols"] == 10
+    assert not snap["started"]
+
+
+def test_battleship_place_ships_validation():
+    from server.battleship_room import BattleshipRoom
+    room = BattleshipRoom("BS", "bot", level=0, human_side=1)
+
+    # Thiếu tàu (< 5 tàu)
+    with pytest.raises(GameError) as exc:
+        room.place_ships(1, [{"r": 0, "c": 0, "len": 5, "vertical": False}])
+    assert "đúng 5 tàu" in str(exc.value)
+
+    # Tàu ra ngoài bàn
+    bad_oob = [
+        {"r": 0, "c": 8, "len": 5, "vertical": False},  # 8+5 = 13 > 10
+        {"r": 1, "c": 0, "len": 4, "vertical": False},
+        {"r": 2, "c": 0, "len": 3, "vertical": False},
+        {"r": 3, "c": 0, "len": 3, "vertical": False},
+        {"r": 4, "c": 0, "len": 2, "vertical": False},
+    ]
+    with pytest.raises(GameError) as exc:
+        room.place_ships(1, bad_oob)
+    assert "ngoài" in str(exc.value)
+
+    # Tàu chồng lên nhau
+    bad_overlap = [
+        {"r": 0, "c": 0, "len": 5, "vertical": False},
+        {"r": 0, "c": 2, "len": 4, "vertical": False},  # đè lên (0, 2)
+        {"r": 2, "c": 0, "len": 3, "vertical": False},
+        {"r": 3, "c": 0, "len": 3, "vertical": False},
+        {"r": 4, "c": 0, "len": 2, "vertical": False},
+    ]
+    with pytest.raises(GameError) as exc:
+        room.place_ships(1, bad_overlap)
+    assert "chồng" in str(exc.value)
+
+    # Tàu nằm kề sát nhau (hợp lệ theo luật tự do!)
+    adjacent_ships = [
+        {"r": 0, "c": 0, "len": 5, "vertical": False},
+        {"r": 1, "c": 0, "len": 4, "vertical": False},
+        {"r": 2, "c": 0, "len": 3, "vertical": False},
+        {"r": 3, "c": 0, "len": 3, "vertical": False},
+        {"r": 4, "c": 0, "len": 2, "vertical": False},
+    ]
+    room.place_ships(1, adjacent_ships)
+    assert room.phase == "playing"
+    assert room.started
+    assert room.fleets[1] is not None
+
+
+def test_battleship_bot_flow_over_websocket(client, monkeypatch):
+    monkeypatch.setattr("battleship_game.BATTLESHIP_LEVELS", [("Dễ", 0.05), ("Vừa", 0.05), ("Khó", 0.05)])
+    monkeypatch.setattr("server.battleship_bot.BATTLESHIP_LEVELS", [("Dễ", 0.05), ("Vừa", 0.05), ("Khó", 0.05)])
+    with client.websocket_connect("/ws", headers=account(client, "bs_user1")) as ws:
+        # Tạo phòng với người bắn trước (side 1)
+        ws.send_json({"type": "create", "game": "battleship", "mode": "bot", "level": 0, "side": 1})
+        assert receive_until(ws, lambda m: m["type"] == "joined")["side"] == 1
+
+        # Xếp tàu ngẫu nhiên
+        ws.send_json({"type": "place_ships", "random": True})
+        room = state_where(ws, lambda r: r["phase"] == "playing")
+        assert room["started"]
+        assert room["current"] == 1
+        assert room["myFleet"] is not None
+        assert len(room["myFleet"]["ships"]) == 5
+        # Không lộ tàu chưa chìm của bot!
+        assert room["opponentBoard"]["revealedShips"] == []
+
+        # Bắn 1 phát vào (0, 0)
+        ws.send_json({"type": "fire", "r": 0, "c": 0})
+        room = state_where(ws, lambda r: r["moves"] >= 1)
+        assert len(room["opponentBoard"]["hits"]) + len(room["opponentBoard"]["misses"]) >= 1
+
+
+def test_battleship_bot_shoots_first_when_side_2(client, monkeypatch):
+    monkeypatch.setattr("battleship_game.BATTLESHIP_LEVELS", [("Dễ", 0.05), ("Vừa", 0.05), ("Khó", 0.05)])
+    monkeypatch.setattr("server.battleship_bot.BATTLESHIP_LEVELS", [("Dễ", 0.05), ("Vừa", 0.05), ("Khó", 0.05)])
+    with client.websocket_connect("/ws", headers=account(client, "bs_side2")) as ws:
+        ws.send_json({"type": "create", "game": "battleship", "mode": "bot", "level": 0, "side": 2})
+        assert receive_until(ws, lambda m: m["type"] == "joined")["side"] == 2
+
+        # Người xếp tàu ngẫu nhiên
+        ws.send_json({"type": "place_ships", "random": True})
+
+        # Do người là side 2, bot là side 1 (đi trước). Bot sẽ tự khai hỏa nước đầu tiên!
+        room = state_where(ws, lambda r: r["moves"] >= 1)
+        assert room["moves"] >= 1
+
+
+def test_battleship_anti_cheat_and_win(client):
+    from server.battleship_room import BattleshipRoom
+    from battleship_game import Fleet
+
+    room = BattleshipRoom("BS_TEST", "bot", level=0, human_side=1)
+    human_ships = [
+        {"name": "Tàu sân bay", "len": 5, "r": 0, "c": 0, "vertical": False},
+        {"name": "Thiết giáp hạm", "len": 4, "r": 1, "c": 0, "vertical": False},
+        {"name": "Tuần dương hạm", "len": 3, "r": 2, "c": 0, "vertical": False},
+        {"name": "Tàu ngầm", "len": 3, "r": 3, "c": 0, "vertical": False},
+        {"name": "Khu trục hạm", "len": 2, "r": 4, "c": 0, "vertical": False},
+    ]
+    bot_ships = [
+        {"name": "Tàu sân bay", "len": 5, "r": 5, "c": 0, "vertical": False},
+        {"name": "Thiết giáp hạm", "len": 4, "r": 6, "c": 0, "vertical": False},
+        {"name": "Tuần dương hạm", "len": 3, "r": 7, "c": 0, "vertical": False},
+        {"name": "Tàu ngầm", "len": 3, "r": 8, "c": 0, "vertical": False},
+        {"name": "Khu trục hạm", "len": 2, "r": 9, "c": 0, "vertical": False},
+    ]
+    room.fleets[1] = Fleet(human_ships)
+    room.fleets[2] = Fleet(bot_ships)
+    room.take_seat("Human", "user_token", prefer=1)
+    room.phase = "playing"
+    room.started = True
+    room.current = 1
+
+    # Kiểm tra anti-cheat snapshot:
+    snap = room.snapshot("user_token")
+    # Tàu đối thủ chưa chìm KHÔNG ĐƯỢC xuất hiện
+    assert snap["opponentBoard"]["revealedShips"] == []
+    assert len(snap["opponentBoard"]["sunkShips"]) == 0
+
+    # Bắn chìm Tàu sân bay của bot: (5, 0..4)
+    for c in range(4):
+        room.fire(1, 5, c)
+        assert room.current == 1  # Bắn trúng được bắn tiếp!
+    room.fire(1, 5, 4)  # Đánh chìm tàu sân bay
+
+    snap = room.snapshot("user_token")
+    assert len(snap["opponentBoard"]["sunkShips"]) == 1
+    assert snap["opponentBoard"]["sunkShips"][0]["name"] == "Tàu sân bay"
+    assert snap["opponentBoard"]["revealedShips"] == []  # Ván chưa kết thúc, vẫn chưa lộ toàn bộ tàu
+
+    # Bắn chìm toàn bộ các tàu còn lại của bot
+    for r, count in [(6, 4), (7, 3), (8, 3), (9, 2)]:
+        for c in range(count):
+            room.fire(1, r, c)
+
+    assert room.winner == 1
+    assert room.phase == "ended"
+    final_snap = room.snapshot("user_token")
+    # Khi đã thắng, toàn bộ vị trí tàu đối thủ mới được lộ ra
+    assert len(final_snap["opponentBoard"]["revealedShips"]) == 5
+
+
+def test_battleship_rejects_bad_requests(client):
+    with client.websocket_connect("/ws", headers=account(client, "bs_err")) as ws:
+        ws.send_json({"type": "create", "game": "battleship", "mode": "bot", "level": 0, "side": 1})
+        receive_until(ws, lambda m: m["type"] == "joined")
+
+        # Bắn khi chưa xếp tàu
+        ws.send_json({"type": "fire", "r": 0, "c": 0})
+        err = receive_until(ws, lambda m: m["type"] == "error")["message"]
+        assert "Chưa đến giai đoạn bắn tàu" in err
+
+        # Lệnh move cờ caro gửi vào
+        ws.send_json({"type": "move", "r": 0, "c": 0})
+        err = receive_until(ws, lambda m: m["type"] == "error")["message"]
+        assert "fire" in err or "hải chiến" in err
+
+        # Lệnh undo
+        ws.send_json({"type": "undo"})
+        err = receive_until(ws, lambda m: m["type"] == "error")["message"]
+        assert "không có đi lại" in err
+
+        # Xếp tàu ngẫu nhiên để vào giai đoạn bắn
+        ws.send_json({"type": "place_ships", "random": True})
+        state_where(ws, lambda r: r["phase"] == "playing")
+
+        # Tọa độ ngoài bàn
+        ws.send_json({"type": "fire", "r": 15, "c": 0})
+        err = receive_until(ws, lambda m: m["type"] == "error")["message"]
+        assert "không hợp lệ" in err
+
+        # Tọa độ không phải số nguyên
+        ws.send_json({"type": "fire", "r": "0", "c": 0})
+        err = receive_until(ws, lambda m: m["type"] == "error")["message"]
+        assert "không hợp lệ" in err
+
+
+def test_battleship_bot_survives_reset_while_thinking():
+    from server.battleship_bot import BattleshipBotDriver
+    from server.battleship_room import BattleshipRoom
+
+    async def scenario():
+        room = BattleshipRoom("BS_RESET", "bot", level=0, human_side=2)
+        room.take_seat("An", "an", prefer=2)
+        driver = BattleshipBotDriver(room, asyncio.get_running_loop(), lambda: None)
+        try:
+            for _ in range(4):
+                # Bot cầm side 1 đi trước khi human xếp tàu xong
+                room.place_ships(2, None)
+                driver.sync()
+                room.restart(2)
+                driver.reset()
+                assert not driver.failed
+        finally:
+            driver.close()
+
+    asyncio.run(scenario())
+
+
+def test_battleship_room_list_includes_game(client):
+    h = account(client, "bs_lister")
+    with client.websocket_connect("/ws", headers=h) as ws:
+        ws.send_json({"type": "create", "game": "battleship", "mode": "bot", "level": 1, "side": 1})
+        receive_until(ws, lambda m: m["type"] == "joined")
+
+        res = client.get("/api/rooms", headers=h)
+        assert res.status_code == 200
+        rooms = res.json()
+        assert any(r.get("game") == "battleship" for r in rooms)
+
+
+
 

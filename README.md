@@ -18,6 +18,11 @@ Project có kèm bản desktop (pygame) dùng chung engine.
   Cơ chế chống gian lận: máy chủ giữ vị trí mìn và tự đo thời gian chuẩn xác bằng `time.monotonic()`.
   Lần mở đầu luôn an toàn và mở ra một vùng. Hỗ trợ mở lan (chording), cắm cờ (chuột phải hoặc giữ 400ms trên điện thoại),
   bảng xếp hạng thành tích thời gian tốt nhất của các tài khoản.
+- **Hải chiến (Battleship):** bàn 10×10 mỗi bên, hạm đội 5 tàu (Tàu sân bay 5 ô, Thiết giáp hạm 4 ô,
+  Tuần dương hạm 3 ô, Tàu ngầm 3 ô, Khu trục hạm 2 ô). Xếp tàu tự do (được phép nằm sát nhau), bắn trúng hoặc đánh chìm
+  thì được bắn tiếp, bắn trượt mất lượt. Đợt 1 hỗ trợ đấu máy 3 mức: Dễ (bắn ngẫu nhiên + quét lân cận),
+  Vừa (quét bàn cờ ô chẵn lẻ + theo trục), Khó (bản đồ mật độ xác suất và truy kích cụm tàu).
+  Cơ chế chống lộ thông tin: client chỉ nhận phát bắn và tàu đối phương đã chìm; vị trí tàu chưa chìm chỉ mở khi ván kết thúc.
 - **Quản trị:** tài khoản admin khai báo trong `.env`. Trang Quản trị: duyệt/từ chối đăng ký,
   xem người dùng, nâng lên admin, đặt lại mật khẩu (sinh ngẫu nhiên), reset elo, xóa tài khoản.
 - **Đấu máy:** 3 mức độ khó (Nhanh 2 giây, Mạnh 5 giây, Chuyên gia 12 giây mỗi nước).
@@ -122,7 +127,9 @@ Vite chuyển tiếp `/api` và `/ws` sang cổng 8000. Sửa giao diện xong, 
 .venv\Scripts\python.exe go_game.py --self-test     # cờ vây: luật, đếm điểm, bot
 .venv\Scripts\python.exe xiangqi_game.py --self-test   # cờ tướng: luật, perft, bot
 .venv\Scripts\python.exe minesweeper_game.py --self-test # dò mìn: luật, loang mở, chording
-.venv\Scripts\python.exe -m pytest server           # máy chủ: phòng, WebSocket, bot, dò mìn
+.venv\Scripts\python.exe sudoku_game.py --self-test       # sudoku: sinh đề duy nhất, giải, gợi ý
+.venv\Scripts\python.exe battleship_game.py --self-test   # hải chiến: xếp tàu, bắn chìm, bot
+.venv\Scripts\python.exe -m pytest server           # máy chủ: phòng, WebSocket, bot, dò mìn, sudoku, hải chiến
 ```
 
 ## Cấu trúc
@@ -132,15 +139,19 @@ caro_game.py          Engine (luật, bot) + game desktop pygame
 go_game.py            Engine cờ vây: luật, đếm điểm, bot Monte Carlo
 xiangqi_game.py       Engine cờ tướng: luật, bot alpha-beta
 minesweeper_game.py   Engine trò chơi Dò mìn (Minesweeper)
+sudoku_game.py        Engine trò chơi Sudoku
+battleship_game.py    Engine trò chơi Hải chiến (Battleship)
 GEMINI.md             Quy tắc cho agent viết code (Gemini/Antigravity CLI)
 server/
-  app.py              FastAPI: đăng nhập, WebSocket /ws, /api/rooms, /api/mines, phục vụ web/dist
-  auth.py             Tài khoản + phiên đăng nhập + điểm dò mìn (SQLite, scrypt), đọc .env
+  app.py              FastAPI: đăng nhập, WebSocket /ws, /api/rooms, /api/mines, /api/sudoku, phục vụ web/dist
+  auth.py             Tài khoản + phiên đăng nhập + điểm dò mìn + sudoku (SQLite, scrypt), đọc .env
   game.py             Phòng chơi: ghế, luật, hoàn tác, đổi bên
   mines.py            Quản lý các ván dò mìn đang chơi trong bộ nhớ
+  sudoku.py           Quản lý các ván sudoku đang chơi trong bộ nhớ
   bot.py              Chạy bot ở luồng nền cho mỗi phòng, có nghĩ trước
   go_room.py, go_bot.py  Phòng chơi và bot nền cho cờ vây
   xiangqi_room.py, xiangqi_bot.py  Phòng chơi và bot nền cho cờ tướng
+  battleship_room.py, battleship_bot.py  Phòng chơi và bot nền cho hải chiến
   tests/              Kiểm thử máy chủ (pytest)
 web/
   src/game.js         Tài khoản, kết nối WebSocket, trạng thái, tự kết nối lại
@@ -148,7 +159,8 @@ web/
                       CaroBoard (bàn cờ SVG), AdminView (quản trị),
                       GoLobbyView / GoGameView / GoBoard (cờ vây),
                       XiangqiLobbyView / XiangqiGameView / XiangqiBoard (cờ tướng),
-                      MinesweeperView (dò mìn)
+                      MinesweeperView (dò mìn), SudokuView (sudoku),
+                      BattleshipLobbyView / BattleshipGameView (hải chiến)
 .claude/skills/       Hướng dẫn cho Claude Code khi làm việc với project
 ```
 
