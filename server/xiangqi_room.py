@@ -24,6 +24,12 @@ class XiangqiRoom(Room):
     """Phòng chơi cờ tướng (Xiangqi), hỗ trợ đấu với máy và đấu người (pvp) qua mạng LAN."""
 
     game_type = "xiangqi"
+    move_error = "Phòng cờ tướng dùng lệnh di chuyển quân (move_piece)."
+    actions = {
+        "move_piece": lambda room, side, msg: room.move(
+            side, msg.get("fr"), msg.get("fc"), msg.get("tr"), msg.get("tc")
+        ),
+    }
 
     def __init__(
         self,
@@ -43,23 +49,11 @@ class XiangqiRoom(Room):
         if not 0 <= level < len(XIANGQI_LEVELS):
             raise GameError("Độ khó không hợp lệ.")
         if human_side not in (RED, BLACK):
-            raise GameError("Bên chơi phải là Đỏ (1) hoặc Đen (2).")
+            raise GameError("Bên chơi phải là Đỏ (1, đi trước) hoặc Đen (2, đi sau).")
 
-        self.code = code
-        self.mode = mode
-        self.rows = 10
-        self.cols = 9
-        self.strict = False
-        self.level = level
-        self.seats: dict[int, Seat | None] = {RED: None, BLACK: None}
-        self.bot_side = (3 - human_side) if mode == "bot" else None
-        if self.bot_side:
-            self.seats[self.bot_side] = Seat(f"Bot Cờ Tướng · {XIANGQI_LEVELS[level][0]}", None)
-
-        self.notice = ""
-        self.empty_since = time.monotonic()
-        self.turn_deadline = None
-        self._clock_key = None
+        bot_side = (3 - human_side) if mode == "bot" else None
+        bot_name = f"Bot Cờ Tướng · {XIANGQI_LEVELS[level][0]}" if bot_side else None
+        self.init_common(code, mode, 10, 9, level, bot_side, bot_name)
         self.stats_nodes = 0
         self.stats_elapsed = 0.0
         self.stats_depth = 0
@@ -172,57 +166,23 @@ class XiangqiRoom(Room):
         self.new_game()
 
     def snapshot(self, token: str | None = None, bot_thinking: bool = False) -> dict[str, Any]:
-        def seat(side: int):
-            s = self.seats[side]
-            if s is None:
-                return None
-            return {
-                "name": s.name,
-                "bot": s.token is None,
-                "online": s.token is None or s.online > 0,
-                "elo": s.elo,
-                "eloDelta": s.elo_delta,
-            }
-
+        snap = self.base_snapshot(token, bot_thinking)
         last = self.history[-1] if self.history else None
         last_move = [last[0], last[1], last[2], last[3]] if last else None
-        you_side = self.side_of(token)
+        you_side = snap["you"]
         is_human_turn = (self.winner == 0 and you_side == self.current and self.started and not self.waiting)
 
-        return {
-            "code": self.code,
-            "game": "xiangqi",
-            "mode": self.mode,
-            "rows": self.rows,
-            "cols": self.cols,
+        snap.update({
             "board": self.engine.board,
-            "level": self.level,
             "levelName": XIANGQI_LEVELS[self.level][0],
-            "moves": len(self.history),
             "lastMove": last_move,
-            "current": self.current,
-            "winner": self.winner,
-            "winLine": [],
             "inCheck": self.engine.in_check(self.current) if (self.winner == 0 and self.started) else False,
             "legalMoves": self.engine.legal_moves() if is_human_turn else [],
-            "players": {str(RED): seat(RED), str(BLACK): seat(BLACK)},
-            "you": you_side,
-            "waiting": self.waiting,
-            "botThinking": bot_thinking,
             "stats": {
                 "depth": self.stats_depth,
                 "nodes": self.stats_nodes,
                 "elapsed": round(self.stats_elapsed, 2),
                 "score": self.stats_score,
             },
-            "notice": self.notice,
-            "request": self.request,
-            "started": self.started,
-            "ready": sorted(self.ready),
-            "turnSeconds": TURN_SECONDS,
-            "turnLeft": (
-                None
-                if self.turn_deadline is None
-                else round(max(0.0, self.turn_deadline - time.monotonic()), 2)
-            ),
-        }
+        })
+        return snap

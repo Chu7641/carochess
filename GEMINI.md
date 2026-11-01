@@ -30,6 +30,13 @@ giao diện Vue 3 + Vite (`web/src/`), tài khoản SQLite (`server/auth.py`).
   helper dùng chung nằm ở `server/tests/conftest.py` (fixture `client`, hàm `account()`, `login()`, `start()`...).
   Khi thêm trò mới thì tạo file `test_<trò>.py` riêng.
 
+## Thêm trò mới
+1. Engine: viết trong `<trò>_game.py` ở thư mục gốc (luật, trạng thái, self-test).
+2. Phòng: tạo `server/<trò>_room.py` kế thừa `Room`, gọi `init_common()`, khai báo `game_type` và `actions` (hoặc `move_error`), tạo `snapshot()` = `base_snapshot()` + trường riêng.
+3. Bot: tạo `server/<trò>_bot.py` kế thừa `ThreadedBotDriver` (override `make_input`, `compute`, `apply`, `can_think` nếu cần).
+4. Đăng ký: khai báo `GameSpec` trong `server/games.py: GAMES`.
+5. Kiểm thử: thêm `server/tests/test_<trò>.py` kiểm tra luật, bot, pvp và snapshot.
+
 ## Khi xong
 Trả lời ngắn: đã sửa file nào, vì sao, test nào đã thêm, và điều gì chưa làm hoặc chưa chắc.
 Không cần chạy test hay build: Claude sẽ chạy.

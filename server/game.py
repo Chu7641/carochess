@@ -40,6 +40,37 @@ def clean_name(name, fallback="Người chơi"):
 
 
 class Room:
+    game_type = "caro"
+    actions = {
+        "move": lambda room, side, msg: room.place(side, msg.get("r"), msg.get("c")),
+    }
+
+    def init_common(
+        self,
+        code: str,
+        mode: str,
+        rows: int,
+        cols: int,
+        level: int = 1,
+        bot_side: int | None = None,
+        bot_name: str | None = None,
+        strict: bool = False,
+    ):
+        self.code = code
+        self.mode = mode
+        self.rows = rows
+        self.cols = cols
+        self.strict = bool(strict)
+        self.level = level
+        self.bot_side = bot_side
+        self.seats: dict[int, Seat | None] = {X: None, O: None}
+        if self.bot_side and bot_name:
+            self.seats[self.bot_side] = Seat(bot_name, None)
+        self.notice = ""
+        self.empty_since = time.monotonic()
+        self.turn_deadline = None  # time.monotonic() lúc lượt hiện tại hết giờ
+        self._clock_key = None
+
     def __init__(self, code, mode, rows=15, cols=15, strict=False, level=1, human_side=X):
         if mode not in MODES:
             raise GameError("Chế độ chơi không hợp lệ.")
@@ -53,17 +84,9 @@ class Room:
             raise GameError("Độ khó không hợp lệ.")
         if human_side not in (X, O):
             raise GameError("Bên chơi phải là X hoặc O.")
-        self.code, self.mode = code, mode
-        self.rows, self.cols, self.strict = rows, cols, bool(strict)
-        self.level = level
-        self.seats: dict[int, Seat | None] = {X: None, O: None}
-        self.bot_side = 3 - human_side if mode == "bot" else None
-        if self.bot_side:
-            self.seats[self.bot_side] = Seat(f"Bot · {LEVELS[level][0]}", None)
-        self.notice = ""
-        self.empty_since = time.monotonic()
-        self.turn_deadline = None  # time.monotonic() lúc lượt hiện tại hết giờ
-        self._clock_key = None
+        bot_side = 3 - human_side if mode == "bot" else None
+        bot_name = f"Bot · {LEVELS[level][0]}" if bot_side else None
+        self.init_common(code, mode, rows, cols, level, bot_side, bot_name, strict=strict)
         self.new_game()
 
     # ---------- ghế ngồi ----------
@@ -229,35 +252,55 @@ class Room:
             self._take_back(request["side"])
 
     # ---------- gửi cho client ----------
-    def snapshot(self, token=None, bot_thinking=False):
-        def seat(side):
-            s = self.seats[side]
-            if s is None:
-                return None
-            return {"name": s.name, "bot": s.token is None, "online": s.token is None or s.online > 0,
-                    "elo": s.elo, "eloDelta": s.elo_delta}
+    def _seat_snapshot(self, side: int):
+        s = self.seats.get(side)
+        if s is None:
+            return None
+        return {
+            "name": s.name,
+            "bot": s.token is None,
+            "online": s.token is None or s.online > 0,
+            "elo": s.elo,
+            "eloDelta": s.elo_delta,
+        }
 
-        last = self.history[-1] if self.history else None
+    def base_snapshot(self, token: str | None = None, bot_thinking: bool = False) -> dict[str, Any]:
         return {
             "code": self.code,
-            "game": "caro",  # giao diện chọn màn hình theo trường này (xem GoRoom)
+            "game": getattr(self, "game_type", "caro"),
             "mode": self.mode,
             "rows": self.rows,
             "cols": self.cols,
-            "strict": self.strict,
-            "winLength": WIN_LENGTH,
             "level": self.level,
-            "levelName": LEVELS[self.level][0],
-            "board": self.board,
             "moves": len(self.history),
-            "lastMove": last[:2] if last else None,
             "current": self.current,
             "winner": self.winner,
-            "winLine": self.win_line,
-            "players": {str(X): seat(X), str(O): seat(O)},
+            "winLine": getattr(self, "win_line", []),
+            "players": {str(s): self._seat_snapshot(s) for s in (X, O)},
             "you": self.side_of(token),
             "waiting": self.waiting,
             "botThinking": bot_thinking,
+            "notice": self.notice,
+            "request": self.request,
+            "started": self.started,
+            "ready": sorted(self.ready),
+            "turnSeconds": TURN_SECONDS,
+            "turnLeft": (
+                None
+                if self.turn_deadline is None
+                else round(max(0.0, self.turn_deadline - time.monotonic()), 2)
+            ),
+        }
+
+    def snapshot(self, token=None, bot_thinking=False):
+        snap = self.base_snapshot(token, bot_thinking)
+        last = self.history[-1] if self.history else None
+        snap.update({
+            "strict": self.strict,
+            "winLength": WIN_LENGTH,
+            "levelName": LEVELS[self.level][0],
+            "board": self.board,
+            "lastMove": last[:2] if last else None,
             "stats": {
                 "depth": self.stats.depth,
                 "nodes": self.stats.nodes,
@@ -265,11 +308,5 @@ class Room:
                 "proven": self.stats.proven,
                 "forcingPlies": self.stats.forcing_plies,
             },
-            "notice": self.notice,
-            "request": self.request,
-            "started": self.started,
-            "ready": sorted(self.ready),
-            "turnSeconds": TURN_SECONDS,
-            "turnLeft": (None if self.turn_deadline is None
-                         else round(max(0.0, self.turn_deadline - time.monotonic()), 2)),
-        }
+        })
+        return snap

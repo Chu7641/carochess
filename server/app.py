@@ -46,14 +46,8 @@ from xiangqi_game import RED as XIANGQI_RED, XIANGQI_LEVELS
 from battleship_game import BATTLESHIP_LEVELS
 
 from . import auth, mines, sudoku
-from .battleship_bot import BattleshipBotDriver
-from .battleship_room import BattleshipRoom
-from .bot import BotDriver
 from .game import MAX_SIZE, MIN_SIZE, GameError, Room, new_code
-from .go_bot import GoBotDriver
-from .go_room import GoRoom
-from .xiangqi_bot import XiangqiBotDriver
-from .xiangqi_room import XiangqiRoom
+from .games import GAMES
 
 log = logging.getLogger("caro.server")
 
@@ -72,49 +66,20 @@ class Hub:
     def __init__(self):
         self.rooms: dict[str, Room] = {}
         self.clients: dict[str, set[Client]] = {}
-        self.bots: dict[str, BotDriver] = {}
+        self.bots: dict[str, Any] = {}
 
     # ---------- phòng ----------
     def create(self, client, msg):
         loop = asyncio.get_running_loop()
         code = new_code(self.rooms)
         game_type = msg.get("game", "caro")
-        if game_type == "battleship":
-            room = BattleshipRoom(code, msg.get("mode"),
-                                  level=msg.get("level", 1),
-                                  human_side=msg.get("side", 1))
-            self.rooms[code] = room
-            self.clients[code] = set()
-            if room.mode == "bot":
-                self.bots[code] = BattleshipBotDriver(room, loop, lambda: self.publish(code))
-            return self.join(client, room, prefer=msg.get("side", 1))
-        if game_type == "xiangqi":
-            room = XiangqiRoom(code, msg.get("mode"),
-                               level=msg.get("level", 1),
-                               human_side=msg.get("side", XIANGQI_RED))
-            self.rooms[code] = room
-            self.clients[code] = set()
-            if room.mode == "bot":
-                self.bots[code] = XiangqiBotDriver(room, loop, lambda: self.publish(code))
-            return self.join(client, room, prefer=msg.get("side", XIANGQI_RED))
-        if game_type == "go":
-            room = GoRoom(code, msg.get("mode"),
-                          size=msg.get("size", msg.get("rows", 19)),
-                          komi=msg.get("komi"),
-                          level=msg.get("level", 1),
-                          human_side=msg.get("side", BLACK))
-            self.rooms[code] = room
-            self.clients[code] = set()
-            if room.mode == "bot":
-                self.bots[code] = GoBotDriver(room, loop, lambda: self.publish(code))
-            return self.join(client, room, prefer=msg.get("side", BLACK))
-        room = Room(code, msg.get("mode"), msg.get("rows", 15), msg.get("cols", 15),
-                    msg.get("strict", False), msg.get("level", 1), msg.get("side", X))
+        spec = GAMES.get(game_type, GAMES["caro"])
+        room = spec.make_room(code, msg)
         self.rooms[code] = room
         self.clients[code] = set()
-        if room.mode == "bot":
-            self.bots[code] = BotDriver(room, loop, lambda: self.publish(code))
-        return self.join(client, room, prefer=msg.get("side", X))
+        if room.mode == "bot" and spec.make_bot:
+            self.bots[code] = spec.make_bot(room, loop, lambda: self.publish(code))
+        return self.join(client, room, prefer=msg.get("side", spec.default_side))
 
     def join(self, client, room, prefer=None):
         self.leave(client)
@@ -591,35 +556,24 @@ async def handle(client, msg):
     if room is None:
         raise GameError("Bạn chưa vào phòng nào.")
     side = room.side_of(client.token)
-    if kind == "move":
-        if getattr(room, "game_type", "") == "xiangqi":
-            raise GameError("Phòng cờ tướng dùng lệnh di chuyển quân (move_piece).")
-        if getattr(room, "game_type", "") == "battleship":
-            raise GameError("Phòng hải chiến dùng lệnh bắn (fire).")
-        room.place(side, msg.get("r"), msg.get("c"))
-        hub.changed(room)
-    elif kind == "move_piece":
-        if getattr(room, "game_type", "") != "xiangqi" or not hasattr(room, "move"):
-            raise GameError("Phòng này không phải cờ tướng.")
-        room.move(side, msg.get("fr"), msg.get("fc"), msg.get("tr"), msg.get("tc"))
-        hub.changed(room)
-    elif kind == "place_ships":
-        if getattr(room, "game_type", "") != "battleship" or not hasattr(room, "place_ships"):
-            raise GameError("Phòng này không phải hải chiến.")
-        ships = None if msg.get("random") is True else msg.get("ships")
-        room.place_ships(side, ships)
-        hub.changed(room)
-    elif kind == "fire":
-        if getattr(room, "game_type", "") != "battleship" or not hasattr(room, "fire"):
-            raise GameError("Phòng này không phải hải chiến.")
-        room.fire(side, msg.get("r"), msg.get("c"))
-        hub.changed(room)
-    elif kind == "pass":
-        if hasattr(room, "pass_turn"):
-            room.pass_turn(side)
+    if kind in ("move", "move_piece", "place_ships", "fire", "pass"):
+        actions = getattr(room, "actions", {})
+        handler = actions.get(kind)
+        if handler is not None:
+            handler(room, side, msg)
             hub.changed(room)
         else:
-            raise GameError("Trò chơi này không có tính năng bỏ lượt.")
+            if kind == "move":
+                err = getattr(room, "move_error", None)
+                if err:
+                    raise GameError(err)
+            elif kind == "move_piece":
+                raise GameError("Phòng này không phải cờ tướng.")
+            elif kind in ("place_ships", "fire"):
+                raise GameError("Phòng này không phải hải chiến.")
+            elif kind == "pass":
+                raise GameError("Trò chơi này không có tính năng bỏ lượt.")
+            raise GameError("Lệnh không hợp lệ.")
     elif kind == "undo":
         room.undo(side)
         hub.changed(room, reset_bot=True)

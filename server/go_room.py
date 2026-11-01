@@ -27,6 +27,10 @@ class GoRoom(Room):
     """Phòng chơi cờ vây (Go), hỗ trợ bàn 9x9, 13x13, 19x19 và luật cờ vây chuẩn."""
 
     game_type = "go"
+    actions = {
+        "move": lambda room, side, msg: room.place(side, msg.get("r"), msg.get("c")),
+        "pass": lambda room, side, msg: room.pass_turn(side),
+    }
 
     def __init__(
         self,
@@ -56,23 +60,11 @@ class GoRoom(Room):
         if human_side not in (BLACK, WHITE):
             raise GameError("Bên chơi phải là Đen (1) hoặc Trắng (2).")
 
-        self.code = code
-        self.mode = mode
+        bot_side = 3 - human_side if mode == "bot" else None
+        bot_name = f"Bot Cờ Vây · {GO_LEVELS[level][0]}" if bot_side else None
+        self.init_common(code, mode, size, size, level, bot_side, bot_name)
         self.size = size
-        self.rows = size
-        self.cols = size
-        self.strict = False
         self.komi = DEFAULT_KOMI.get(size, 7.5) if komi is None else float(komi)
-        self.level = level
-        self.seats: dict[int, Seat | None] = {BLACK: None, WHITE: None}
-        self.bot_side = 3 - human_side if mode == "bot" else None
-        if self.bot_side:
-            self.seats[self.bot_side] = Seat(f"Bot Cờ Vây · {GO_LEVELS[level][0]}", None)
-
-        self.notice = ""
-        self.empty_since = time.monotonic()
-        self.turn_deadline = None
-        self._clock_key = None
         self.stats_nodes = 0
         self.stats_elapsed = 0.0
         self.score_details: dict[str, Any] | None = None
@@ -189,48 +181,23 @@ class GoRoom(Room):
         self.new_game()
 
     def snapshot(self, token: str | None = None, bot_thinking: bool = False) -> dict[str, Any]:
-        def seat(side: int):
-            s = self.seats[side]
-            if s is None:
-                return None
-            return {
-                "name": s.name,
-                "bot": s.token is None,
-                "online": s.token is None or s.online > 0,
-                "elo": s.elo,
-                "eloDelta": s.elo_delta,
-            }
-
+        snap = self.base_snapshot(token, bot_thinking)
         last = self.history[-1] if self.history else None
         last_move = [last[0], last[1]] if (last and last[0] is not None) else None
         last_action = "pass" if (last and last[0] is None) else ("move" if last else None)
 
-        return {
-            "code": self.code,
-            "game": "go",
-            "mode": self.mode,
-            "rows": self.rows,
-            "cols": self.cols,
+        snap.update({
             "size": self.size,
             "komi": self.komi,
             "captured": {
                 str(BLACK): self.engine.captured[BLACK],
                 str(WHITE): self.engine.captured[WHITE],
             },
-            "level": self.level,
             "levelName": GO_LEVELS[self.level][0],
             "board": self.board,
-            "moves": len(self.history),
             "lastMove": last_move,
             "lastAction": last_action,
-            "current": self.current,
-            "winner": self.winner,
-            "winLine": [],
             "score": self.score_details,
-            "players": {str(BLACK): seat(BLACK), str(WHITE): seat(WHITE)},
-            "you": self.side_of(token),
-            "waiting": self.waiting,
-            "botThinking": bot_thinking,
             "stats": {
                 "depth": 0,
                 "nodes": self.stats_nodes,
@@ -238,14 +205,5 @@ class GoRoom(Room):
                 "proven": False,
                 "forcingPlies": 0,
             },
-            "notice": self.notice,
-            "request": self.request,
-            "started": self.started,
-            "ready": sorted(self.ready),
-            "turnSeconds": TURN_SECONDS,
-            "turnLeft": (
-                None
-                if self.turn_deadline is None
-                else round(max(0.0, self.turn_deadline - time.monotonic()), 2)
-            ),
-        }
+        })
+        return snap

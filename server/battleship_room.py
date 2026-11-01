@@ -23,6 +23,13 @@ class BattleshipRoom(Room):
     """Phòng chơi Hải chiến (Battleship 10x10), hỗ trợ đấu máy và đấu người qua mạng LAN."""
 
     game_type = "battleship"
+    move_error = "Phòng hải chiến dùng lệnh bắn (fire)."
+    actions = {
+        "place_ships": lambda room, side, msg: room.place_ships(
+            side, None if msg.get("random") is True else msg.get("ships")
+        ),
+        "fire": lambda room, side, msg: room.fire(side, msg.get("r"), msg.get("c")),
+    }
 
     def __init__(
         self,
@@ -45,21 +52,9 @@ class BattleshipRoom(Room):
         if human_side not in (1, 2):
             raise GameError("Bên chơi phải là 1 (bắn trước) hoặc 2 (bắn sau).")
 
-        self.code = code
-        self.mode = mode
-        self.rows = SIZE
-        self.cols = SIZE
-        self.strict = False
-        self.level = level
-        self.bot_side = (3 - human_side) if mode == "bot" else None
-        self.seats: dict[int, Seat | None] = {1: None, 2: None}
-        if self.bot_side:
-            self.seats[self.bot_side] = Seat(f"Bot Hải Chiến · {BATTLESHIP_LEVELS[level][0]}", None)
-
-        self.notice = ""
-        self.empty_since = time.monotonic()
-        self.turn_deadline = None
-        self._clock_key = None
+        bot_side = (3 - human_side) if mode == "bot" else None
+        bot_name = f"Bot Hải Chiến · {BATTLESHIP_LEVELS[level][0]}" if bot_side else None
+        self.init_common(code, mode, SIZE, SIZE, level, bot_side, bot_name)
         self.new_game()
 
     def new_game(self):
@@ -253,19 +248,8 @@ class BattleshipRoom(Room):
 
     def snapshot(self, token: str | None = None, bot_thinking: bool = False) -> dict[str, Any]:
         """Tạo snapshot an toàn chống lộ thông tin hạm đội đối thủ."""
-        def seat(side: int):
-            s = self.seats[side]
-            if s is None:
-                return None
-            return {
-                "name": s.name,
-                "bot": s.token is None,
-                "online": s.token is None or s.online > 0,
-                "elo": s.elo,
-                "eloDelta": s.elo_delta,
-            }
-
-        you_side = self.side_of(token)
+        snap = self.base_snapshot(token, bot_thinking)
+        you_side = snap["you"]
         fleet_1 = self.fleets[1]
         fleet_2 = self.fleets[2]
 
@@ -329,19 +313,9 @@ class BattleshipRoom(Room):
                     "revealedShips": fl.ships if (self.winner != 0 and fl) else [],
                 }
 
-        return {
-            "code": self.code,
-            "game": "battleship",
-            "mode": self.mode,
-            "rows": self.rows,
-            "cols": self.cols,
+        snap.update({
             "phase": self.phase,
-            "level": self.level,
             "levelName": BATTLESHIP_LEVELS[self.level][0],
-            "moves": len(self.history),
-            "current": self.current,
-            "winner": self.winner,
-            "winLine": [],
             "myFleet": my_fleet_data,
             "opponentBoard": opponent_board_data,
             "boards": boards_data,
@@ -351,18 +325,5 @@ class BattleshipRoom(Room):
                 "1": get_ships_left(fleet_1),
                 "2": get_ships_left(fleet_2),
             },
-            "players": {"1": seat(1), "2": seat(2)},
-            "you": you_side,
-            "waiting": self.waiting,
-            "botThinking": bot_thinking,
-            "notice": self.notice,
-            "request": self.request,
-            "started": self.started,
-            "ready": sorted(self.ready),
-            "turnSeconds": TURN_SECONDS,
-            "turnLeft": (
-                None
-                if self.turn_deadline is None
-                else round(max(0.0, self.turn_deadline - time.monotonic()), 2)
-            ),
-        }
+        })
+        return snap
