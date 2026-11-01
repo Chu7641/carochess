@@ -15,10 +15,16 @@ function save(key, value) {
   } catch { /* chế độ ẩn danh: bỏ qua */ }
 }
 
+const VALID_DEDICATED_GAMES = ['minesweeper', 'sudoku', 'admin', 'password', 'leaderboard']
+function loadSavedGame() {
+  const g = load('caro.game')
+  return VALID_DEDICATED_GAMES.includes(g) ? g : null
+}
+
 export const state = reactive({
   user: null,      // {id, username, isAdmin} sau khi đăng nhập
   checked: false,  // đã hỏi máy chủ xem còn phiên đăng nhập chưa
-  game: load('caro.game'),  // trò chơi đang chọn; null: màn chọn trò chơi
+  game: loadSavedGame(),  // trò chơi đang chọn; null: sảnh chung
   connected: false,
   code: null,   // mã phòng đang ở
   room: null,   // trạng thái phòng do máy chủ gửi
@@ -100,11 +106,8 @@ function handle(msg) {
     msg.room.receivedAt = Date.now()  // turnLeft tính từ lúc nhận, đồng hồ máy chủ có thể lệch
     if (msg.room.code === state.code) {
       state.room = msg.room
-      if (msg.room.game && state.game !== msg.room.game) {
-        chooseGame(msg.room.game)
-      }
     }
-    const elo = msg.room.players[msg.room.you]?.elo  // elo mới sau mỗi ván
+    const elo = msg.room.players?.[String(msg.room.you)]?.elo  // elo mới sau mỗi ván
     if (elo != null && state.user) state.user.elo = elo
   } else if (msg.type === 'error') {
     showError(msg.message)
@@ -153,6 +156,7 @@ export function joinRoom(code) {
 export function leaveRoom() {
   send({ type: 'leave' })
   state.code = state.room = null
+  chooseGame(null)
   setRoomInUrl(null)
 }
 

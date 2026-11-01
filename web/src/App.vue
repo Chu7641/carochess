@@ -1,31 +1,18 @@
 <script setup>
 import { onMounted, watch } from 'vue'
 import { checkSession, chooseGame, joinRoom, logout, state } from './game.js'
+import { TITLES } from './games.js'
 import LoginView from './components/LoginView.vue'
-import GamesView from './components/GamesView.vue'
-import LobbyView from './components/LobbyView.vue'
+import HubView from './components/HubView.vue'
 import GameView from './components/GameView.vue'
-import GoLobbyView from './components/GoLobbyView.vue'
 import GoGameView from './components/GoGameView.vue'
-import XiangqiLobbyView from './components/XiangqiLobbyView.vue'
 import XiangqiGameView from './components/XiangqiGameView.vue'
 import MinesweeperView from './components/MinesweeperView.vue'
 import SudokuView from './components/SudokuView.vue'
-import BattleshipLobbyView from './components/BattleshipLobbyView.vue'
 import BattleshipGameView from './components/BattleshipGameView.vue'
+import LeaderboardView from './components/LeaderboardView.vue'
 import AdminView from './components/AdminView.vue'
 import PasswordView from './components/PasswordView.vue'
-
-const TITLES = {
-  caro: 'CỜ CARO · GOMOKU',
-  go: 'CỜ VÂY · GO / BADUK',
-  xiangqi: 'CỜ TƯỚNG · XIANGQI',
-  minesweeper: 'DÒ MÌN · MINESWEEPER',
-  sudoku: 'SUDOKU',
-  battleship: 'HẢI CHIẾN · BATTLESHIP',
-  admin: 'QUẢN TRỊ',
-  password: 'TÀI KHOẢN',
-}
 
 // Link mời dạng /?room=ABCD: vào thẳng phòng đó ngay khi đăng nhập xong.
 const invite = new URLSearchParams(location.search).get('room')
@@ -42,8 +29,8 @@ onMounted(checkSession)
   <header class="topbar">
     <h1>
       <button v-if="state.user && state.game && !state.code" class="back"
-              title="Chọn công cụ khác" @click="chooseGame(null)">←</button>
-      {{ TITLES[state.game] ?? 'KHÔNG GIAN LÀM VIỆC' }}
+              title="Về sảnh chung" @click="chooseGame(null)">←</button>
+      {{ TITLES[state.code ? state.room?.game : state.game] ?? 'KHÔNG GIAN LÀM VIỆC' }}
     </h1>
     <div v-if="state.user" class="who">
       <button v-if="state.user.isAdmin && state.game !== 'admin' && !state.code" class="btn small"
@@ -60,35 +47,25 @@ onMounted(checkSession)
   <main>
     <div v-if="!state.checked" class="loading muted">Đang tải…</div>
     <LoginView v-else-if="!state.user" />
-    <template v-else-if="state.game === 'caro'">
-      <GameView v-if="state.code && state.room" />
-      <div v-else-if="state.code" class="loading muted">Đang vào phòng {{ state.code }}…</div>
-      <LobbyView v-else />
+
+    <!-- ĐANG Ở TRONG PHÒNG -->
+    <template v-else-if="state.code">
+      <div v-if="!state.room" class="loading muted">Đang vào phòng {{ state.code }}…</div>
+      <GameView v-else-if="state.room.game === 'caro'" />
+      <GoGameView v-else-if="state.room.game === 'go'" />
+      <XiangqiGameView v-else-if="state.room.game === 'xiangqi'" />
+      <BattleshipGameView v-else-if="state.room.game === 'battleship'" />
     </template>
-    <template v-else-if="state.game === 'go'">
-      <GoGameView v-if="state.code && state.room" />
-      <div v-else-if="state.code" class="loading muted">Đang vào phòng cờ vây {{ state.code }}…</div>
-      <GoLobbyView v-else />
-    </template>
-    <template v-else-if="state.game === 'xiangqi'">
-      <XiangqiGameView v-if="state.code && state.room" />
-      <div v-else-if="state.code" class="loading muted">Đang vào phòng cờ tướng {{ state.code }}…</div>
-      <XiangqiLobbyView v-else />
-    </template>
-    <template v-else-if="state.game === 'minesweeper'">
-      <MinesweeperView />
-    </template>
-    <template v-else-if="state.game === 'sudoku'">
-      <SudokuView />
-    </template>
-    <template v-else-if="state.game === 'battleship'">
-      <BattleshipGameView v-if="state.code && state.room" />
-      <div v-else-if="state.code" class="loading muted">Đang vào phòng hải chiến {{ state.code }}…</div>
-      <BattleshipLobbyView v-else />
-    </template>
+
+    <!-- CÁC MÀN HÌNH RIÊNG BIỆT -->
+    <MinesweeperView v-else-if="state.game === 'minesweeper'" />
+    <SudokuView v-else-if="state.game === 'sudoku'" />
+    <LeaderboardView v-else-if="state.game === 'leaderboard'" />
     <AdminView v-else-if="state.game === 'admin' && state.user.isAdmin" />
     <PasswordView v-else-if="state.game === 'password'" />
-    <GamesView v-else />
+
+    <!-- SẢNH CHUNG -->
+    <HubView v-else />
   </main>
   <Transition name="toast">
     <div v-if="state.error" class="toast" role="alert">{{ state.error }}</div>

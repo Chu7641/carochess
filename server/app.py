@@ -504,6 +504,11 @@ def sudoku_leaderboard_route(level: str = "easy", user=Depends(current_user)):
     return {"top": top, "me": me}
 
 
+@app.get("/api/leaderboard")
+def general_leaderboard(user=Depends(current_user)):
+    return auth.elo_leaderboard(user["id"], limit=50)
+
+
 @app.get("/api/rooms", dependencies=[Depends(current_user)])
 def rooms():
     return hub.room_list()

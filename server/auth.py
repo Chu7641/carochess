@@ -203,6 +203,53 @@ def record_game(name_a, name_b, score_a):
     return a + delta, b - delta, delta
 
 
+def elo_leaderboard(user_id, limit=50):
+    """Bảng xếp hạng Elo các tài khoản đã duyệt, sắp theo elo giảm dần (bằng nhau theo username)."""
+    with closing(_db()) as db:
+        top_rows = db.execute(
+            """
+            WITH RankedUsers AS (
+                SELECT
+                    id,
+                    username,
+                    elo,
+                    ROW_NUMBER() OVER (ORDER BY elo DESC, username COLLATE NOCASE ASC) AS rank
+                FROM users
+                WHERE approved = 1
+            )
+            SELECT rank, username, elo
+            FROM RankedUsers
+            ORDER BY rank ASC
+            LIMIT ?
+            """,
+            (int(limit),),
+        ).fetchall()
+
+        me_row = db.execute(
+            """
+            WITH RankedUsers AS (
+                SELECT
+                    id,
+                    elo,
+                    ROW_NUMBER() OVER (ORDER BY elo DESC, username COLLATE NOCASE ASC) AS rank
+                FROM users
+                WHERE approved = 1
+            )
+            SELECT rank, elo
+            FROM RankedUsers
+            WHERE id = ?
+            """,
+            (user_id,),
+        ).fetchone()
+
+    elo_list = [
+        {"rank": row["rank"], "username": row["username"], "elo": row["elo"]}
+        for row in top_rows
+    ]
+    me = {"rank": me_row["rank"], "elo": me_row["elo"]} if me_row else None
+    return {"elo": elo_list, "me": me}
+
+
 # ---------- điểm trò chơi một người (solo) ----------
 def record_solo(game, user_id, level, ms):
     now = time.time()

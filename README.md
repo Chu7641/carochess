@@ -6,7 +6,8 @@ Project có kèm bản desktop (pygame) dùng chung engine.
 
 - **Tài khoản:** đăng ký/đăng nhập, lưu trong SQLite (`data/caro.db`). Tài khoản mới phải
   được admin phê duyệt mới đăng nhập được. Bấm vào tên mình trên thanh tiêu đề để đổi mật khẩu.
-  Đăng nhập xong thì chọn trò chơi: cờ caro, cờ vây, cờ tướng, dò mìn, sudoku hoặc hải chiến.
+  Đăng nhập xong sẽ vào **Sảnh chung** tập hợp mọi trò chơi, tạo phòng nhanh, xem danh sách phòng đang mở và liên kết đến Bảng xếp hạng.
+- **Bảng xếp hạng:** theo dõi điểm xếp hạng Elo đối kháng (Top 50) trên toàn hệ thống và kỷ lục thời gian hoàn thành các trò chơi một người (Dò mìn, Sudoku).
 - **Cờ tướng:** hỗ trợ cả đấu người qua LAN và đấu với máy (3 mức: Dễ 0,5 giây, Vừa 1,5 giây, Khó 4 giây mỗi nước;
   bot alpha-beta). Đấu người dùng chung sẵn sàng, đồng hồ 30 giây, tính elo, xin đi lại. Đủ luật: cản chân Mã,
   cản mắt Tượng, Pháo ăn qua ngòi, lộ mặt tướng; hết nước đi là thua, lặp thế cờ 3 lần là hòa (chưa có luật cấm chiếu mãi, đuổi mãi).
@@ -155,13 +156,21 @@ server/
   battleship_room.py, battleship_bot.py  Phòng chơi và bot nền cho hải chiến
   tests/              Kiểm thử máy chủ (pytest)
 web/
-  src/game.js         Tài khoản, kết nối WebSocket, trạng thái, tự kết nối lại
-  src/components/     LoginView, GamesView (chọn trò), LobbyView (sảnh), GameView (ván cờ),
-                      CaroBoard (bàn cờ SVG), AdminView (quản trị),
-                      GoLobbyView / GoGameView / GoBoard (cờ vây),
-                      XiangqiLobbyView / XiangqiGameView / XiangqiBoard (cờ tướng),
-                      MinesweeperView (dò mìn), SudokuView (sudoku),
-                      BattleshipLobbyView / BattleshipGameView (hải chiến)
+  src/game.js         Tài khoản, kết nối WebSocket, trạng thái
+  src/games.js        Danh sách trò chơi, metadata và tiêu đề
+  src/room.js         Composable useRoomView dùng chung cho các màn chơi
+  src/components/     
+    HubView.vue       Sảnh chung tập hợp mọi trò, tạo phòng và phòng đang mở
+    LeaderboardView.vue Bảng xếp hạng Elo và kỷ lục Dò mìn / Sudoku
+    LoginView, AdminView, PasswordView
+    GameView / CaroBoard (cờ caro)
+    GoGameView / GoBoard (cờ vây)
+    XiangqiGameView / XiangqiBoard (cờ tướng)
+    BattleshipGameView / BattleshipShip (hải chiến)
+    MinesweeperView, SudokuView
+    create/           Form tạo phòng riêng từng trò (CreateCaro, CreateGo, CreateXiangqi, CreateBattleship)
+    room/             Component thanh bên dùng chung (PlayerList, RequestBox, InviteBox)
+    battleship/       Component tách riêng của hải chiến (SeaBoard, PlacementPanel, BattlePanel)
 .claude/skills/       Hướng dẫn cho Claude Code khi làm việc với project
 ```
 
@@ -190,7 +199,7 @@ máy đi trước.
   CPU và mỗi bot tính nông hơn.
 - Phòng nằm trong bộ nhớ: khởi động lại máy chủ thì mất các ván đang chơi. Phòng không còn ai
   kết nối sẽ bị xóa sau 10 phút.
-- Chưa có chat, bảng xếp hạng hay lịch sử ván đấu.
+- Chưa có chat hay lịch sử ván đấu (đã có Bảng xếp hạng Elo và kỷ lục thời gian một người).
 - Quên mật khẩu thì nhờ admin đặt lại (chưa có khôi phục qua email).
 - Đăng nhập chưa giới hạn số lần thử sai, và chạy HTTP thường (không HTTPS). Chỉ nên
   chạy trong mạng LAN tin cậy, không đưa thẳng ra Internet.
