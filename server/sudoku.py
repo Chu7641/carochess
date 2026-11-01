@@ -6,44 +6,33 @@ import time
 from typing import Any
 
 from sudoku_game import SUDOKU_LEVELS, SudokuGame, generate
-from . import auth
+from .solo import SoloManager, SoloSession
 
 GAME_TTL = 7200  # 2 giờ không tương tác thì xóa ván
 
 
-class ActiveSudokuGame:
+class ActiveSudokuGame(SoloSession):
+    GAME = "sudoku"
+
     def __init__(self, user_id: int, level: str, game: SudokuGame | None = None):
-        self.user_id = user_id
-        self.level = level
+        super().__init__(user_id, level, start_timer=True)
         if game is not None:
             self.game = game
         else:
             puzzle, solution = generate(level)
             self.game = SudokuGame(puzzle, solution)
-        self.start_mono: float = time.monotonic()
         self.penalty_ms: int = 0
         self.hints_used: int = 0
-        self.final_ms: int = 0
-        self.score_recorded: bool = False
-        self.new_record: bool = False
-        self.last_active: float = time.time()
-
-    def touch(self):
-        self.last_active = time.time()
 
     @property
     def elapsed_ms(self) -> int:
-        if self.game.solved:
+        if self.game.solved and self.final_ms > 0:
             return self.final_ms
         return max(0, round((time.monotonic() - self.start_mono) * 1000) + self.penalty_ms)
 
     def _check_and_record_win(self):
-        if self.game.solved and not self.score_recorded:
-            self.score_recorded = True
-            self.final_ms = max(1, round((time.monotonic() - self.start_mono) * 1000) + self.penalty_ms)
-            prev_best = auth.sudoku_best(self.user_id, self.level)
-            self.new_record = (prev_best is None) or (self.final_ms < prev_best["ms"])
-            auth.record_sudoku(self.user_id, self.level, self.final_ms)
+        if self.game.solved:
+            self.finish(won=True)
 
     def on_set(self, r: int, c: int, v: int):
         self.touch()
@@ -75,27 +64,21 @@ class ActiveSudokuGame:
         }
 
 
-# user_id -> ActiveSudokuGame (mỗi tài khoản đúng 1 ván)
-_ACTIVE_GAMES: dict[int, ActiveSudokuGame] = {}
+_manager = SoloManager(GAME_TTL)
+_ACTIVE_GAMES = _manager.games
 
 
 def cleanup_games():
-    now = time.time()
-    expired = [uid for uid, g in list(_ACTIVE_GAMES.items()) if now - g.last_active > GAME_TTL]
-    for uid in expired:
-        _ACTIVE_GAMES.pop(uid, None)
+    _manager.cleanup()
 
 
 def new_game(user_id: int, level: str, game: SudokuGame | None = None) -> ActiveSudokuGame:
     cleanup_games()
     if not isinstance(level, str) or level not in SUDOKU_LEVELS:
         raise ValueError("Cấp độ không hợp lệ.")
-    active = ActiveSudokuGame(user_id, level, game=game)
-    _ACTIVE_GAMES[user_id] = active
-    return active
+    return _manager.new(user_id, ActiveSudokuGame(user_id, level, game=game))
 
 
 def get_game(user_id: int) -> ActiveSudokuGame | None:
     cleanup_games()
-    return _ACTIVE_GAMES.get(user_id)
-
+    return _manager.get(user_id)

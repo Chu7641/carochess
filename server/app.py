@@ -428,8 +428,8 @@ def mines_state(user=Depends(current_user)):
 def mines_leaderboard_route(level: str = "easy", user=Depends(current_user)):
     if level not in MINES_LEVELS:
         raise HTTPException(400, "Cấp độ không hợp lệ.")
-    top = auth.mines_leaderboard(level, limit=20)
-    me = auth.mines_best(user["id"], level)
+    top = auth.solo_leaderboard("minesweeper", level, limit=20)
+    me = auth.solo_best("minesweeper", user["id"], level)
     return {"top": top, "me": me}
 
 
@@ -499,8 +499,8 @@ def sudoku_state(user=Depends(current_user)):
 def sudoku_leaderboard_route(level: str = "easy", user=Depends(current_user)):
     if not isinstance(level, str) or level not in SUDOKU_LEVELS:
         raise HTTPException(400, "Cấp độ không hợp lệ.")
-    top = auth.sudoku_leaderboard(level, limit=20)
-    me = auth.sudoku_best(user["id"], level)
+    top = auth.solo_leaderboard("sudoku", level, limit=20)
+    me = auth.solo_best("sudoku", user["id"], level)
     return {"top": top, "me": me}
 
 

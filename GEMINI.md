@@ -31,11 +31,17 @@ giao diện Vue 3 + Vite (`web/src/`), tài khoản SQLite (`server/auth.py`).
   Khi thêm trò mới thì tạo file `test_<trò>.py` riêng.
 
 ## Thêm trò mới
-1. Engine: viết trong `<trò>_game.py` ở thư mục gốc (luật, trạng thái, self-test).
-2. Phòng: tạo `server/<trò>_room.py` kế thừa `Room`, gọi `init_common()`, khai báo `game_type` và `actions` (hoặc `move_error`), tạo `snapshot()` = `base_snapshot()` + trường riêng.
-3. Bot: tạo `server/<trò>_bot.py` kế thừa `ThreadedBotDriver` (override `make_input`, `compute`, `apply`, `can_think` nếu cần).
-4. Đăng ký: khai báo `GameSpec` trong `server/games.py: GAMES`.
-5. Kiểm thử: thêm `server/tests/test_<trò>.py` kiểm tra luật, bot, pvp và snapshot.
+- **Trò đối kháng (caro, go, xiangqi, battleship...)**:
+  1. Engine: viết trong `<trò>_game.py` ở thư mục gốc (luật, trạng thái, self-test).
+  2. Phòng: tạo `server/<trò>_room.py` kế thừa `Room`, gọi `init_common()`, khai báo `game_type` và `actions` (hoặc `move_error`), tạo `snapshot()` = `base_snapshot()` + trường riêng.
+  3. Bot: tạo `server/<trò>_bot.py` kế thừa `ThreadedBotDriver` (override `make_input`, `compute`, `apply`, `can_think` nếu cần).
+  4. Đăng ký: khai báo `GameSpec` trong `server/games.py: GAMES`.
+  5. Kiểm thử: thêm `server/tests/test_<trò>.py` kiểm tra luật, bot, pvp và snapshot.
+- **Trò một người (dò mìn, sudoku...)**:
+  1. Kế thừa `SoloSession` trong `server/<trò>.py`, khai báo `GAME = "<tên>"`.
+  2. Dùng `SoloManager(ttl)` quản lý ván đang chơi.
+  3. Điểm và xếp hạng tự động lưu vào bảng `solo_scores` qua `auth.record_solo`, `auth.solo_leaderboard`, `auth.solo_best`.
+  4. Kiểm thử: thêm test trong `server/tests/test_<trò>.py`.
 
 ## Khi xong
 Trả lời ngắn: đã sửa file nào, vì sao, test nào đã thêm, và điều gì chưa làm hoặc chưa chắc.
