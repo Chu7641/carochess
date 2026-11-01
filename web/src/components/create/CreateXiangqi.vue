@@ -6,6 +6,8 @@ defineProps({
   info: { type: Object, default: () => ({ xiangqiLevels: [] }) },
 })
 
+const emit = defineEmits(['created'])
+
 const bot = reactive({ level: 1, side: 1 })
 const pvp = reactive({ side: 1 })
 
@@ -16,6 +18,7 @@ function startBot() {
     level: bot.level,
     side: bot.side,
   })
+  emit('created')
 }
 
 function startPvp() {
@@ -24,6 +27,7 @@ function startPvp() {
     mode: 'pvp',
     side: pvp.side,
   })
+  emit('created')
 }
 </script>
 

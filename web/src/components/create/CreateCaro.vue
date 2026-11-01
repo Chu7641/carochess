@@ -6,6 +6,8 @@ defineProps({
   info: { type: Object, default: () => ({ levels: [] }) },
 })
 
+const emit = defineEmits(['created'])
+
 const bot = reactive({ level: 1, side: X, size: 15, strict: false })
 const pvp = reactive({ size: 15, strict: false })
 const SIZES = [9, 15, 30, 50]
@@ -19,6 +21,7 @@ function startBot() {
     cols: bot.size,
     strict: bot.strict,
   })
+  emit('created')
 }
 
 function startPvp() {
@@ -28,6 +31,7 @@ function startPvp() {
     cols: pvp.size,
     strict: pvp.strict,
   })
+  emit('created')
 }
 </script>
 

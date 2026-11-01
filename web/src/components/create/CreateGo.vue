@@ -6,6 +6,8 @@ defineProps({
   info: { type: Object, default: () => ({ goLevels: [], goSizes: [9, 13, 19] }) },
 })
 
+const emit = defineEmits(['created'])
+
 const DEFAULT_KOMI = { 9: 5.5, 13: 6.5, 19: 7.5 }
 const SIZES = [9, 13, 19]
 
@@ -24,6 +26,7 @@ function startBot() {
     side: bot.side,
     size: bot.size,
   })
+  emit('created')
 }
 
 function startPvp() {
@@ -33,6 +36,7 @@ function startPvp() {
     size: pvp.size,
     komi: pvp.komi,
   })
+  emit('created')
 }
 </script>
 
