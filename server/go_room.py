@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import time
 from typing import Any
 
 from go_game import (
@@ -15,11 +14,8 @@ from go_game import (
     GoBoard,
 )
 from server.game import (
-    TURN_SECONDS,
     GameError,
     Room,
-    Seat,
-    clean_name,
 )
 
 

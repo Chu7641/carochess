@@ -1,52 +1,31 @@
-# Cờ caro · Gomoku
+# Nền tảng trò chơi qua mạng LAN
 
-Cờ caro chơi trên trình duyệt trong mạng LAN, có hai chế độ: **người đấu người** và
-**người đấu máy**. Bot viết bằng Python thuần, không dùng thư viện AI hay dịch vụ mạng.
-Project có kèm bản desktop (pygame) dùng chung engine.
+Nền tảng chơi nhiều trò chơi qua trình duyệt trong mạng LAN (hỗ trợ tài khoản, sảnh chung dạng lưới ô, đấu người và đấu máy, tính điểm Elo, bảng xếp hạng), kèm bản desktop pygame cho cờ caro. Bot viết bằng Python thuần, không phụ thuộc thư viện AI hay dịch vụ mạng bên ngoài.
 
-- **Tài khoản:** đăng ký/đăng nhập, lưu trong SQLite (`data/caro.db`). Tài khoản mới phải
-  được admin phê duyệt mới đăng nhập được. Bấm vào tên mình trên thanh tiêu đề để đổi mật khẩu.
-  Đăng nhập xong sẽ vào **Sảnh chung** tập hợp mọi trò chơi, tạo phòng nhanh, xem danh sách phòng đang mở và liên kết đến Bảng xếp hạng.
-- **Bảng xếp hạng:** theo dõi điểm xếp hạng Elo đối kháng (Top 50) trên toàn hệ thống và kỷ lục thời gian hoàn thành các trò chơi một người (Dò mìn, Sudoku).
-- **Cờ tướng:** hỗ trợ cả đấu người qua LAN và đấu với máy (3 mức: Dễ 0,5 giây, Vừa 1,5 giây, Khó 4 giây mỗi nước;
-  bot alpha-beta). Đấu người dùng chung sẵn sàng, đồng hồ 30 giây, tính elo, xin đi lại. Đủ luật: cản chân Mã,
-  cản mắt Tượng, Pháo ăn qua ngòi, lộ mặt tướng; hết nước đi là thua, lặp thế cờ 3 lần là hòa (chưa có luật cấm chiếu mãi, đuổi mãi).
-  Bấm quân để thấy các ô đi được, tự động lật bàn cờ khi cầm Đen.
-- **Cờ vây:** bàn 9×9, 13×13, 19×19, có bắt quân, cấm tự sát, luật Kiếp, bỏ lượt và
-  đếm điểm diện tích kèm komi (chưa tự loại quân chết: hãy bắt hết trước khi cùng bỏ lượt).
-  Đấu người dùng chung sẵn sàng, đồng hồ, elo; đấu máy có 3 mức (bot Monte Carlo, mạnh nhất ở 9×9).
-- **Dò mìn:** chơi một người theo phong cách Windows cổ điển. 3 mức độ (Dễ 9×9 10 mìn, Vừa 16×16 40 mìn, Khó 16×30 99 mìn).
-  Cơ chế chống gian lận: máy chủ giữ vị trí mìn và tự đo thời gian chuẩn xác bằng `time.monotonic()`.
-  Lần mở đầu luôn an toàn và mở ra một vùng. Hỗ trợ mở lan (chording), cắm cờ (chuột phải hoặc giữ 400ms trên điện thoại),
-  bảng xếp hạng thành tích thời gian tốt nhất của các tài khoản.
-- **Hải chiến (Battleship):** bàn 10×10 mỗi bên, hạm đội 5 tàu (Tàu sân bay 5 ô, Thiết giáp hạm 4 ô,
-  Tuần dương hạm 3 ô, Tàu ngầm 3 ô, Khu trục hạm 2 ô). Xếp tàu tự do (được phép nằm sát nhau), bắn trúng hoặc đánh chìm
-  thì được bắn tiếp, bắn trượt mất lượt. Hỗ trợ cả đấu người qua LAN và đấu với máy:
-  - Đấu máy 3 mức: Dễ (bắn ngẫu nhiên + quét lân cận), Vừa (quét bàn cờ ô chẵn lẻ + theo trục), Khó (bản đồ mật độ xác suất và truy kích cụm tàu).
-  - Đấu người qua LAN: mỗi bên tự xếp hạm đội bí mật; cả hai xếp xong ván bắt đầu (Bên 1 bắn trước). Đồng hồ 30 giây mỗi lượt, tính elo, đổi bên khi ván mới, tự xử thua khi rời phòng/hết giờ giữa ván; người xem thấy 2 bàn cờ song song.
-  - Cơ chế chống lộ thông tin: client chỉ nhận phát bắn và tàu đối phương đã chìm; vị trí tàu chưa chìm chỉ mở khi ván kết thúc.
-- **Quản trị:** tài khoản admin khai báo trong `.env`. Trang Quản trị: duyệt/từ chối đăng ký,
-  xem người dùng, nâng lên admin, đặt lại mật khẩu (sinh ngẫu nhiên), reset elo, xóa tài khoản.
-- **Đấu máy:** 3 mức độ khó (Nhanh 2 giây, Mạnh 5 giây, Chuyên gia 12 giây mỗi nước).
-  Bạn chọn cầm X (đi trước) hoặc O (máy đi trước). Hoàn tác được. Không tính elo.
-- **Đấu người qua LAN:** tạo phòng có mã 4 ký tự và link mời. Sảnh hiện mọi phòng
-  (đang chờ, đang chơi, đấu máy): bấm để vào chơi, vào lại ghế của mình, hoặc vào xem.
-  - Đủ hai người thì cả hai bấm **Sẵn sàng** ván mới bắt đầu. Mỗi ván mới hai bên đổi quân.
-  - Mỗi lượt có **30 giây**. Hết giờ, rời phòng hoặc bấm "Ván mới" khi ván chưa xong thì
-    bị tính thua.
-  - **Xin đi lại** cần đối thủ đồng ý.
-  - **Elo:** bắt đầu 1000, tính theo Elo chuẩn K = 32 (hai người ngang điểm: thắng +16, thua −16).
-- **Bàn cờ:** bản web từ 9×9 đến 50×50 (bàn lớn thì cuộn được, có phóng to/thu nhỏ và
-  tự đưa nước mới vào tầm nhìn); bản desktop từ 9×9 đến 25×25.
-- **Luật:** 5 quân liên tiếp là thắng. Có thể bật luật chặn hai đầu
-  (dãy bị chặn cả hai đầu thì không thắng). Đây không phải luật Renju.
-- Tải lại trang, mất mạng hay đổi máy giữa ván thì đăng nhập lại là về đúng ghế cũ.
-  Giao diện dùng được trên điện thoại, có chế độ tối.
+## Các trò chơi
+
+- **Cờ caro:** 5 quân liên tiếp là thắng, hỗ trợ bật/tắt luật chặn hai đầu. Bàn cờ từ 9×9 đến 50×50 (bàn lớn có cuộn, zoom và tự cuộn theo nước mới). Đấu máy 3 mức (Nhanh 2s, Mạnh 5s, Chuyên gia 12s, có tính năng nghĩ trước); đấu người qua LAN có đồng hồ 30 giây, tính elo, xin đi lại và đổi quân mỗi ván.
+- **Cờ vây:** Hỗ trợ kích thước bàn 9×9, 13×13, 19×19, đủ luật bắt quân, cấm tự sát, luật Kiếp, bỏ lượt và đếm điểm diện tích kèm điểm mục chấp (komi). Đấu người dùng chung đồng hồ và tính elo; đấu máy có 3 mức dựa trên thuật toán Monte Carlo.
+- **Cờ tướng:** Tái hiện chiến trường Hán - Sở với đủ luật cản chân Mã, cản mắt Tượng, Pháo ăn qua ngòi, lộ mặt tướng, lặp thế cờ 3 lần xử hòa. Tự động lật bàn cờ khi cầm quân Đen. Đấu máy 3 mức (Dễ 0,5s, Vừa 1,5s, Khó 4s dùng alpha-beta); đấu người qua LAN hỗ trợ đồng hồ 30s, elo và xin đi lại.
+- **Hải chiến (Battleship):** Bàn cờ 10×10 mỗi bên, hạm đội gồm 5 chiến hạm (Tàu sân bay 5, Thiết giáp hạm 4, Tuần dương hạm 3, Tàu ngầm 3, Khu trục hạm 2). Xếp tàu tự do (được nằm sát nhau), bắn trúng hoặc đánh chìm được bắn tiếp, trượt mất lượt:
+  - Đấu máy 3 mức: Dễ (ngẫu nhiên + quét lân cận), Vừa (quét ô chẵn lẻ + theo trục), Khó (bản đồ mật độ xác suất và truy kích cụm tàu).
+  - Đấu người qua LAN: Mỗi bên xếp tàu bí mật; cả hai xếp xong ván bắt đầu (Bên 1 bắn trước). Đồng hồ 30s mỗi lượt, tính elo, đổi bên sau mỗi ván; người xem theo dõi được cả 2 bàn cờ song song.
+  - Chống gian lận/lộ thông tin: Client chỉ nhận tọa độ phát bắn và tàu đối phương đã chìm; vị trí tàu chưa chìm chỉ được tiết lộ khi ván đấu kết thúc.
+- **Dò mìn:** Chơi một người theo phong cách Windows cổ điển với 3 mức độ (Dễ 9×9 10 mìn, Vừa 16×16 40 mìn, Khó 16×30 99 mìn). Lần mở đầu luôn an toàn, hỗ trợ mở lan (chording), cắm cờ (chuột phải hoặc giữ 400ms trên màn hình cảm ứng). Máy chủ giữ lời giải và tự bấm giờ chống gian lận.
+- **Sudoku:** Chơi một người điền các chữ số 1–9 vào lưới 9×9 sao cho không trùng hàng, cột và khối 3×3 (3 độ khó: Dễ, Vừa, Khó). Máy chủ sinh đề duy nhất, tự bấm giờ, lưu kỷ lục cá nhân và xếp hạng thời gian; hỗ trợ tính năng gợi ý nước đi (không tính kỷ lục).
+
+## Tính năng hệ thống
+
+- **Tài khoản & Phân quyền:** Đăng ký và đăng nhập bảo mật (lưu trong SQLite `data/caro.db`, băm mật khẩu scrypt). Tài khoản mới cần admin duyệt. Có thể tự đổi mật khẩu cá nhân.
+- **Sảnh chung dạng lưới ô (Hub):** Hiển thị toàn bộ phòng đang mở, lọc nhanh theo trò, ô nhập mã phòng trực tiếp, cùng ô "Tạo phòng" nổi bật mở hộp thoại 2 bước (chọn trò chơi và thiết lập thông số ván đấu).
+- **Bảng xếp hạng:** Theo dõi Top 50 Elo đối kháng trên toàn hệ thống và kỷ lục thời gian hoàn thành của các trò chơi một người (Dò mìn, Sudoku).
+- **Quản trị:** Trang quản trị cho admin duyệt/từ chối đăng ký, quản lý người dùng, phân quyền admin, đặt lại mật khẩu ngẫu nhiên, reset elo hoặc xóa tài khoản.
+- **Chơi qua mạng LAN & Đổi thiết bị:** Tải lại trang, mất kết nối hay đổi máy tính giữa ván thì đăng nhập lại sẽ tự động về đúng phòng và ghế đang ngồi. Giao diện tối ưu cho điện thoại di động và hỗ trợ chế độ tối (dark mode).
 
 ## Yêu cầu
 
 - Python 3.10 trở lên
-- Node.js 20.19+ hoặc 22.12+ (chỉ cần để build giao diện)
+- Node.js 20.19+ hoặc 22.12+ (chỉ cần khi build giao diện web)
 
 ## Cài đặt
 
@@ -65,44 +44,37 @@ npm install
 npm run build
 cd ..
 
-# Khai báo tài khoản admin, rồi sửa ADMIN_PASSWORD trong .env
+# Khai báo tài khoản admin ban đầu, sau đó sửa ADMIN_PASSWORD trong .env
 copy .env.example .env      # macOS / Linux: cp .env.example .env
 ```
 
-Tài khoản admin được tạo ở lần chạy máy chủ đầu tiên; đăng nhập bằng `ADMIN_USERNAME` và
-`ADMIN_PASSWORD` trong `.env`. Sửa `ADMIN_PASSWORD` sau lần chạy đầu không đổi mật khẩu của
-tài khoản đã tạo. `.env` và thư mục `data/` không được đưa lên git.
-Các lệnh bên dưới viết theo Windows. Trên macOS/Linux, thay `.venv\Scripts\python.exe`
-bằng `.venv/bin/python`.
+Tài khoản admin được tự động khởi tạo ở lần chạy máy chủ đầu tiên dựa trên `ADMIN_USERNAME` và `ADMIN_PASSWORD` trong `.env`. `.env` và thư mục `data/` không đưa lên kho git.
+Các lệnh bên dưới viết theo Windows; trên macOS/Linux, thay `.venv\Scripts\python.exe` bằng `.venv/bin/python`.
 
-## Chạy
+## Chạy máy chủ
 
 ```bash
 .venv\Scripts\python.exe -m server
 ```
 
-Máy chủ nghe trên mọi card mạng ở cổng 8000 và in ra địa chỉ để truy cập:
+Máy chủ lắng nghe trên mọi card mạng ở cổng 8000 và hiển thị thông tin truy cập:
 
 ```
-Cờ caro LAN đang chạy. Mở trên máy này: http://localhost:8000
+Máy chủ đang chạy. Mở trên máy này: http://localhost:8000
   Máy khác cùng mạng LAN: http://192.168.1.19:8000
 ```
 
-Máy khác trong cùng mạng mở địa chỉ LAN đó trên trình duyệt. Lần đầu chạy trên Windows, khi
-được hỏi về tường lửa, hãy cho phép Python trên mạng **Private**. Nếu máy khác vẫn không
-truy cập được, mở cổng 8000 trong Windows Firewall.
+Các thiết bị khác trong cùng mạng LAN chỉ cần mở trình duyệt và truy cập địa chỉ IP hiển thị ở trên. Lần đầu chạy trên Windows, hãy cấp quyền tường lửa cho Python trên mạng **Private**.
 
-Tùy chọn: `--port 9000` để đổi cổng, `--host 127.0.0.1` để chỉ cho chính máy này truy cập.
+Tùy chọn: `--port 9000` để đổi cổng, `--host 127.0.0.1` nếu chỉ muốn chơi cục bộ trên máy này.
 
-### Bản desktop
+### Bản desktop (Cờ caro)
 
 ```bash
 .venv\Scripts\python.exe caro_game.py
 ```
 
-Chuột trái: đánh. Chuột phải / U: hoàn tác. R: ván mới. F: đổi quân đi trước.
-S: đổi bên bot. B: bật/tắt luật chặn hai đầu. P: bật/tắt nghĩ trước. 1/2/3: độ khó.
-+/-: đổi kích thước bàn. Esc: thoát.
+Phím tắt: Chuột trái: đánh cờ. Chuột phải / U: hoàn tác. R: ván mới. F: đổi quân đi trước. S: đổi bên bot. B: bật/tắt luật chặn hai đầu. P: bật/tắt nghĩ trước. 1/2/3: độ khó. +/-: đổi kích thước bàn. Esc: thoát.
 
 ## Phát triển
 
@@ -117,50 +89,69 @@ cd web
 npm run dev
 ```
 
-Vite chuyển tiếp `/api` và `/ws` sang cổng 8000. Sửa giao diện xong, chạy `npm run build`
-để máy chủ phục vụ bản mới.
+Vite chuyển tiếp `/api` và `/ws` sang cổng 8000. Khi sửa xong giao diện, chạy `npm run build` trong `web/` để đóng gói phục vụ qua FastAPI.
 
 ### Kiểm thử
 
+Cài đặt thư viện dev:
 ```bash
 .venv\Scripts\python.exe -m pip install -r requirements-dev.txt
-
-.venv\Scripts\python.exe caro_game.py --self-test   # engine: luật, VCF/VCT, make/unmake
-.venv\Scripts\python.exe go_game.py --self-test     # cờ vây: luật, đếm điểm, bot
-.venv\Scripts\python.exe xiangqi_game.py --self-test   # cờ tướng: luật, perft, bot
-.venv\Scripts\python.exe minesweeper_game.py --self-test # dò mìn: luật, loang mở, chording
-.venv\Scripts\python.exe sudoku_game.py --self-test       # sudoku: sinh đề duy nhất, giải, gợi ý
-.venv\Scripts\python.exe battleship_game.py --self-test   # hải chiến: xếp tàu, bắn chìm, bot
-.venv\Scripts\python.exe -m pytest server           # máy chủ: phòng, WebSocket, bot, dò mìn, sudoku, hải chiến
 ```
 
-## Cấu trúc
+1. **Self-test của từng engine độc lập:**
+```bash
+.venv\Scripts\python.exe caro_game.py --self-test        # cờ caro: luật, VCF/VCT, make/unmake
+.venv\Scripts\python.exe go_game.py --self-test          # cờ vây: luật, đếm điểm, bot
+.venv\Scripts\python.exe xiangqi_game.py --self-test    # cờ tướng: luật, perft, bot
+.venv\Scripts\python.exe battleship_game.py --self-test# hải chiến: xếp tàu, bắn chìm, bot
+.venv\Scripts\python.exe minesweeper_game.py --self-test # dò mìn: luật, mở lan, chording
+.venv\Scripts\python.exe sudoku_game.py --self-test    # sudoku: sinh đề duy nhất, giải, gợi ý
+```
+
+2. **Kiểm thử máy chủ với pytest:**
+```bash
+.venv\Scripts\python.exe -m pytest server                # Chạy toàn bộ test máy chủ
+
+# Hoặc chạy kiểm thử riêng từng trò:
+.venv\Scripts\python.exe -m pytest server/tests/test_caro.py
+.venv\Scripts\python.exe -m pytest server/tests/test_go.py
+.venv\Scripts\python.exe -m pytest server/tests/test_xiangqi.py
+.venv\Scripts\python.exe -m pytest server/tests/test_battleship.py
+.venv\Scripts\python.exe -m pytest server/tests/test_mines.py
+.venv\Scripts\python.exe -m pytest server/tests/test_sudoku.py
+.venv\Scripts\python.exe -m pytest server/tests/test_leaderboard.py
+```
+
+## Cấu trúc thư mục
 
 ```
-caro_game.py          Engine (luật, bot) + game desktop pygame
+caro_game.py          Engine cờ caro (luật, bot) + game desktop pygame
 go_game.py            Engine cờ vây: luật, đếm điểm, bot Monte Carlo
 xiangqi_game.py       Engine cờ tướng: luật, bot alpha-beta
-minesweeper_game.py   Engine trò chơi Dò mìn (Minesweeper)
-sudoku_game.py        Engine trò chơi Sudoku
-battleship_game.py    Engine trò chơi Hải chiến (Battleship)
-GEMINI.md             Quy tắc cho agent viết code (Gemini/Antigravity CLI)
+battleship_game.py    Engine hải chiến: xếp tàu, bắn chìm, bot xác suất
+minesweeper_game.py   Engine dò mìn: luật, mở lan, chording
+sudoku_game.py        Engine sudoku: sinh đề duy nhất, giải, gợi ý
+GEMINI.md             Quy tắc và kiến trúc cho agent viết code
 server/
-  app.py              FastAPI: đăng nhập, WebSocket /ws, /api/rooms, /api/mines, /api/sudoku, phục vụ web/dist
-  auth.py             Tài khoản + phiên đăng nhập + điểm dò mìn + sudoku (SQLite, scrypt), đọc .env
-  game.py             Phòng chơi: ghế, luật, hoàn tác, đổi bên
-  mines.py            Quản lý các ván dò mìn đang chơi trong bộ nhớ
-  sudoku.py           Quản lý các ván sudoku đang chơi trong bộ nhớ
-  bot.py              Chạy bot ở luồng nền cho mỗi phòng, có nghĩ trước
-  go_room.py, go_bot.py  Phòng chơi và bot nền cho cờ vây
-  xiangqi_room.py, xiangqi_bot.py  Phòng chơi và bot nền cho cờ tướng
-  battleship_room.py, battleship_bot.py  Phòng chơi và bot nền cho hải chiến
-  tests/              Kiểm thử máy chủ (pytest)
+  app.py              FastAPI + WebSocket /ws, API hệ thống, phục vụ web/dist
+  auth.py             Tài khoản, phiên làm việc, bảng solo_scores, elo (SQLite)
+  game.py             Lớp Room cơ sở: ghế, đồng hồ, sẵn sàng, elo, đổi bên
+  games.py            Đăng ký GameSpec cho các trò đối kháng
+  bot_driver.py       Lớp ThreadedBotDriver điều khiển luồng bot dùng chung
+  solo.py             Lớp SoloSession và SoloManager cho các trò một người
+  bot.py              Bot cờ caro chạy luồng nền, có nghĩ trước
+  go_room.py, go_bot.py                 Phòng chơi và bot cờ vây
+  xiangqi_room.py, xiangqi_bot.py       Phòng chơi và bot cờ tướng
+  battleship_room.py, battleship_bot.py Phòng chơi và bot hải chiến
+  mines.py            Quản lý phiên chơi dò mìn
+  sudoku.py           Quản lý phiên chơi sudoku
+  tests/              Kiểm thử máy chủ chia theo từng trò (pytest)
 web/
-  src/game.js         Tài khoản, kết nối WebSocket, trạng thái
-  src/games.js        Danh sách trò chơi, metadata và tiêu đề
-  src/room.js         Composable useRoomView dùng chung cho các màn chơi
-  src/components/     
-    HubView.vue       Sảnh chung tập hợp mọi trò, tạo phòng và phòng đang mở
+  src/game.js         Tài khoản, kết nối WebSocket, trạng thái ứng dụng
+  src/games.js        Danh mục trò chơi GAMES và tiêu đề TITLES
+  src/room.js         Composable useRoomView dùng chung cho các màn chơi phòng
+  src/components/
+    HubView.vue       Sảnh chung dạng lưới ô, thanh công cụ, hộp thoại tạo phòng 2 bước
     LeaderboardView.vue Bảng xếp hạng Elo và kỷ lục Dò mìn / Sudoku
     LoginView, AdminView, PasswordView
     GameView / CaroBoard (cờ caro)
@@ -168,38 +159,22 @@ web/
     XiangqiGameView / XiangqiBoard (cờ tướng)
     BattleshipGameView / BattleshipShip (hải chiến)
     MinesweeperView, SudokuView
-    create/           Form tạo phòng riêng từng trò (CreateCaro, CreateGo, CreateXiangqi, CreateBattleship)
+    create/           Form tạo phòng từng trò (CreateCaro, CreateGo, CreateXiangqi, CreateBattleship)
     room/             Component thanh bên dùng chung (PlayerList, RequestBox, InviteBox)
-    battleship/       Component tách riêng của hải chiến (SeaBoard, PlacementPanel, BattlePanel)
-.claude/skills/       Hướng dẫn cho Claude Code khi làm việc với project
+    battleship/       Component hải chiến (SeaBoard, PlacementPanel, BattlePanel)
 ```
 
-Giao thức WebSocket được mô tả ở đầu file [server/app.py](server/app.py).
+Giao thức WebSocket được mô tả chi tiết ở đầu file [server/app.py](server/app.py).
 
 ## Bot hoạt động thế nào
 
-- **Tìm kiếm:** iterative deepening, alpha-beta/PVS, transposition table với khóa Zobrist,
-  history heuristic. Mỗi dòng trên bàn được mã hóa thành một số cơ số 3 và cập nhật dần
-  sau mỗi nước; đặc trưng của dòng được tra bảng, nên đánh giá thế cờ không phải duyệt lại
-  cả bàn.
-- **Chuỗi ép thắng:** VCF (ép liên tục bằng bốn) và VCT (ép bằng ba và bốn). Mỗi lần bên
-  phòng thủ được đi, bot xét mọi cách đỡ hợp lệ, gồm cả phản công bằng bốn. Vì vậy khi bot
-  báo "chuỗi ép thắng" thì đó là thắng chắc.
-- **Nghĩ trước:** trong lượt của người chơi, bot đoán nước sẽ được đánh và tính sẵn nước đáp.
-  Đoán trúng thì máy trả lời nhanh hơn và đã tính sâu hơn.
-- Mức Chuyên gia đạt độ sâu khoảng 8 nước, tốc độ khoảng 8.000 nút mỗi giây (CPython).
+- **Cờ caro:** Iterative deepening, alpha-beta/PVS, bảng chuyển vị (transposition table) với mã khóa Zobrist, history heuristic. Tích hợp chuỗi ép thắng VCF (liên tục bốn) và VCT (ba và bốn). Tính năng nghĩ trước (pondering) trong lượt của đối thủ giúp máy phản xạ nhanh.
+- **Cờ vây:** Thuật toán Monte Carlo tree search (MCTS) mô phỏng ngẫu nhiên các ván cờ nhanh để đánh giá tỷ lệ chiến thắng và chọn điểm đặt quân tối ưu (đặc biệt hiệu quả trên bàn 9×9).
+- **Cờ tướng:** Tìm kiếm alpha-beta kết hợp hàm đánh giá thế cờ dựa trên giá trị quân cờ, vị trí kiểm soát chiến thuật và độ an toàn của Tướng.
+- **Hải chiến:** Phân tích bản đồ mật độ xác suất (probability density map) trên các ô chưa bắn dựa trên kích thước các tàu còn sống, kết hợp thuật toán truy kích theo trục khi bắn trúng một phần thân tàu.
 
-Bot mạnh với người chơi thông thường nhưng **không bất bại**. Với luật tự do trên bàn 15×15,
-người đi trước có lợi thế thắng về mặt lý thuyết (Allis, 1994). Muốn máy khó hơn, hãy để
-máy đi trước.
+## Giới hạn & Lưu ý
 
-## Giới hạn
-
-- Bot của mọi phòng chạy chung một tiến trình Python. Nhiều ván đấu máy cùng lúc sẽ tranh
-  CPU và mỗi bot tính nông hơn.
-- Phòng nằm trong bộ nhớ: khởi động lại máy chủ thì mất các ván đang chơi. Phòng không còn ai
-  kết nối sẽ bị xóa sau 10 phút.
-- Chưa có chat hay lịch sử ván đấu (đã có Bảng xếp hạng Elo và kỷ lục thời gian một người).
-- Quên mật khẩu thì nhờ admin đặt lại (chưa có khôi phục qua email).
-- Đăng nhập chưa giới hạn số lần thử sai, và chạy HTTP thường (không HTTPS). Chỉ nên
-  chạy trong mạng LAN tin cậy, không đưa thẳng ra Internet.
+- **Nâng cấp dữ liệu:** Ở lần khởi động máy chủ đầu tiên sau khi nâng cấp hệ thống, điểm kỷ lục Dò mìn và Sudoku cũ sẽ tự động được chuyển sang bảng chung `solo_scores` (khuyến nghị sao lưu tệp `data/caro.db` trước khi nâng cấp).
+- **Bộ nhớ tiến trình:** Bot của các phòng chơi chung một tiến trình Python; nhiều ván đấu máy cùng lúc có thể làm bot tính toán chậm hơn. Phòng chơi lưu trong bộ nhớ RAM: khởi động lại máy chủ sẽ kết thúc các phòng đang chơi (phòng trống tự xóa sau 10 phút).
+- **Bảo mật mạng:** Chưa tích hợp HTTPS và giới hạn số lần thử mật khẩu sai; chỉ nên vận hành máy chủ trong mạng LAN tin cậy, không mở trực tiếp ra Internet mà không có proxy bảo vệ.

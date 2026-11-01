@@ -1,4 +1,4 @@
-"""Máy chủ cờ caro qua mạng LAN: FastAPI + WebSocket, phục vụ luôn giao diện Vue.
+"""Máy chủ trò chơi qua mạng LAN: FastAPI + WebSocket, phục vụ luôn giao diện Vue.
 
 Phải đăng nhập (cookie "session", xem /api/login) mới dùng được /ws và /api/rooms.
 Ghế trong phòng gắn với tài khoản, nên tải lại trang hay đổi máy vẫn về đúng ghế.
@@ -39,10 +39,10 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from caro_game import EMPTY, LEVELS, O, X
-from go_game import BLACK, GO_LEVELS, GO_SIZES, WHITE
+from go_game import GO_LEVELS, GO_SIZES
 from minesweeper_game import MINES_LEVELS
 from sudoku_game import SUDOKU_LEVELS, SudokuGame, generate as generate_sudoku
-from xiangqi_game import RED as XIANGQI_RED, XIANGQI_LEVELS
+from xiangqi_game import XIANGQI_LEVELS
 from battleship_game import BATTLESHIP_LEVELS
 
 from . import auth, mines, sudoku
@@ -243,7 +243,7 @@ async def lifespan(_app):
         hub.remove(code)
 
 
-app = FastAPI(title="Cờ caro LAN", lifespan=lifespan)
+app = FastAPI(title="Trò chơi mạng LAN", lifespan=lifespan)
 COOKIE = "session"
 
 

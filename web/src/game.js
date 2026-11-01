@@ -5,6 +5,7 @@ export const X = 1
 export const O = 2
 export const sideName = (side) => (side === X ? 'X' : side === O ? 'O' : '')
 
+// Tiền tố 'caro.' trong localStorage (như 'caro.game', 'caro.hub_filter'...) được giữ lại vì lý do tương thích ngược.
 function load(key) {
   try { return localStorage.getItem(key) } catch { return null }
 }

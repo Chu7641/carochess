@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import time
 from typing import Any
 
 from battleship_game import (
@@ -12,10 +11,8 @@ from battleship_game import (
     random_fleet,
 )
 from server.game import (
-    TURN_SECONDS,
     GameError,
     Room,
-    Seat,
 )
 
 

@@ -2,18 +2,14 @@
 
 from __future__ import annotations
 
-import time
 from typing import Any
 
 from server.game import (
-    TURN_SECONDS,
     GameError,
     Room,
-    Seat,
 )
 from xiangqi_game import (
     BLACK,
-    EMPTY,
     RED,
     XIANGQI_LEVELS,
     XiangqiBoard,
