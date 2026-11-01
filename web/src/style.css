@@ -91,3 +91,71 @@ button, input, select { font: inherit; }
 .segmented button.active { background: var(--green); border-color: var(--green); color: #fff; }
 
 .check { display: flex; gap: 8px; align-items: center; margin-bottom: 14px; cursor: pointer; }
+
+/* Màn chơi: chỉ áp dụng trong <section class="game room-view"> của 4 màn chơi,
+   để không lan sang sảnh, màn chọn trò, Dò mìn, Sudoku, Quản trị (cũng có .status, .players, .game...) */
+.room-view {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 320px;
+  gap: 16px;
+  align-items: start;
+}
+.room-view .board-wrap { min-width: 0; }
+.room-view .side { display: grid; gap: 14px; position: sticky; top: 16px; }
+.room-view .status { font-size: 1.15rem; font-weight: 700; text-align: center; padding: 6px 0; }
+.room-view .status.green { color: var(--green); }
+.room-view .status.red { color: var(--red); }
+.room-view .status.blue { color: var(--blue); }
+.room-view .status.muted { color: var(--muted); }
+.room-view .request {
+  display: grid;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px dashed var(--panel-border);
+  color: var(--muted);
+  text-align: center;
+}
+.room-view .request.ask { border: 2px solid var(--accent); color: var(--text); font-weight: 600; }
+.room-view .players { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.room-view .players li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  border: 1px solid var(--panel-border);
+}
+.room-view .players li.turn { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset; }
+.room-view .dot {
+  width: 28px; height: 28px; border-radius: 50%;
+  display: grid; place-items: center;
+  color: #fff; font-weight: 700; font-size: 0.85rem; flex: none;
+}
+.room-view .dot.x { background: var(--stone-x); }
+.room-view .dot.o { background: var(--stone-o); }
+.room-view .dot.black { background: #202225; }
+.room-view .dot.white { background: #f0ede6; color: #202225; border: 1px solid #c2b9a7; }
+.room-view .dot.red { background: var(--red); }
+.room-view .dot.blue { background: var(--blue); }
+.room-view .pname { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.room-view .ready { color: var(--green); font-weight: 700; white-space: nowrap; }
+.room-view .clock { font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.room-view .clock.low { color: var(--red); }
+.room-view .elo { color: var(--muted); white-space: nowrap; }
+.room-view .elo .up { color: var(--green); }
+.room-view .elo .down { color: var(--red); }
+.room-view .online { width: 9px; height: 9px; border-radius: 50%; background: #2fae62; flex: none; }
+.room-view .online.off { background: #b9b2a6; }
+.room-view .meta { margin: 0; display: grid; gap: 4px; }
+.room-view .meta div { display: flex; justify-content: space-between; gap: 8px; }
+.room-view .meta dt { color: var(--muted); }
+.room-view .meta dd { margin: 0; text-align: right; }
+.room-view .stats { margin: 0; }
+.room-view .invite { display: grid; gap: 6px; }
+.room-view .invite .row > .btn { flex: none; }
+.room-view .actions { display: grid; grid-template-columns: repeat(auto-fit, minmax(90px, 1fr)); gap: 8px; }
+@media (max-width: 860px) {
+  .room-view { grid-template-columns: 1fr; }
+  .room-view .side { position: static; }
+}
