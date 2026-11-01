@@ -6,6 +6,7 @@ import CaroBoard from './CaroBoard.vue'
 import PlayerList from './room/PlayerList.vue'
 import RequestBox from './room/RequestBox.vue'
 import InviteBox from './room/InviteBox.vue'
+import ResultPopup from './room/ResultPopup.vue'
 
 const {
   room,
@@ -23,6 +24,8 @@ const {
   request,
   handleNewGame,
   handleLeave,
+  result,
+  closeResult,
 } = useRoomView({ sideName })
 
 const canPlay = computed(() => playing.value && you.value === room.value?.current)
@@ -116,5 +119,7 @@ const stats = computed(() => {
         bấm "Ván mới" khi ván chưa xong thì bị tính thua. Mỗi ván mới hai bên đổi quân.
       </p>
     </aside>
+
+    <ResultPopup :result="result" @close="closeResult" @new-game="closeResult(); handleNewGame()" />
   </section>
 </template>

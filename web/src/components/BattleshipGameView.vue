@@ -7,6 +7,7 @@ import PlacementPanel from './battleship/PlacementPanel.vue'
 import BattlePanel from './battleship/BattlePanel.vue'
 import PlayerList from './room/PlayerList.vue'
 import InviteBox from './room/InviteBox.vue'
+import ResultPopup from './room/ResultPopup.vue'
 
 const {
   room,
@@ -19,6 +20,8 @@ const {
   player,
   handleNewGame,
   handleLeave,
+  result,
+  closeResult,
 } = useRoomView({
   isPlaying: (r) => r?.phase === 'playing',
   confirmNewGame: 'Trận chiến chưa kết thúc. Mở ván mới giữa trận sẽ bị tính là bạn thua (trừ Elo). Bạn chắc chắn?',
@@ -242,6 +245,8 @@ const status = computed(() => {
         Bắn trúng hoặc đánh chìm tàu được bắn tiếp! Bắn trượt sẽ mất lượt.
       </p>
     </aside>
+
+    <ResultPopup :result="result" @close="closeResult" @new-game="closeResult(); handleNewGame()" />
   </section>
 </template>
 

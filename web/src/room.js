@@ -1,4 +1,4 @@
-import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { leaveRoom, restart, state } from './game.js'
 
 /**
@@ -96,6 +96,42 @@ export function useRoomView(options = {}) {
     }
   })
 
+  // Popup kết quả: chỉ bật đúng lúc ván vừa kết thúc trong phòng đang xem (winner 0 -> khác 0),
+  // không bật khi mới vào một phòng đã xong từ trước. Ván mới (winner về 0) thì tự đóng.
+  const result = ref(null)
+  watch(() => [room.value?.code, room.value?.winner], ([code, winner], [oldCode, oldWinner] = []) => {
+    if (!winner) {
+      result.value = null
+      return
+    }
+    if (code !== oldCode || oldWinner !== 0) return
+    const r = room.value
+    const me = you.value
+    const name = player(winner)?.name ?? (options.sideName ? options.sideName(winner) : `Bên ${winner}`)
+    const delta = me != null ? player(me)?.eloDelta : null
+    let title, tone
+    if (winner === -1) {
+      title = '🤝 Hòa!'
+      tone = 'draw'
+    } else if (me == null) {
+      title = `🏆 ${name} thắng!`
+      tone = 'info'
+    } else if (winner === me) {
+      title = '🎉 Bạn thắng!'
+      tone = 'win'
+    } else {
+      title = '😞 Bạn thua'
+      tone = 'lose'
+    }
+    result.value = {
+      title,
+      tone,
+      detail: r.notice || '',
+      elo: delta ? `${delta > 0 ? '+' : ''}${delta} elo` : '',
+      canRestart: me != null,
+    }
+  })
+
   const confirmNewGameText = options.confirmNewGame ??
     'Ván chưa xong. Bắt đầu ván mới sẽ tính là bạn thua (trừ elo). Tiếp tục?'
 
@@ -135,6 +171,8 @@ export function useRoomView(options = {}) {
     copyLink,
     player,
     request,
+    result,
+    closeResult: () => { result.value = null },
     newGame: handleNewGame,
     handleNewGame,
     handleLeave,

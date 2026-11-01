@@ -12,6 +12,7 @@ import XiangqiBoard from './XiangqiBoard.vue'
 import PlayerList from './room/PlayerList.vue'
 import RequestBox from './room/RequestBox.vue'
 import InviteBox from './room/InviteBox.vue'
+import ResultPopup from './room/ResultPopup.vue'
 
 const sideName = (s) => (s === 1 ? 'Đỏ' : 'Đen')
 
@@ -31,6 +32,8 @@ const {
   request,
   handleNewGame,
   handleLeave,
+  result,
+  closeResult,
 } = useRoomView({
   sideName,
   isNeedReady: (r, isBotVal) => !isBotVal && r?.winner === 0 && !r?.waiting && !r?.started,
@@ -137,5 +140,7 @@ function onMovePiece(fr, fc, tr, tc) {
         bấm "Ván mới" khi ván chưa xong thì bị tính thua. Mỗi ván mới hai bên đổi quân.
       </p>
     </aside>
+
+    <ResultPopup :result="result" @close="closeResult" @new-game="closeResult(); handleNewGame()" />
   </section>
 </template>
